@@ -1104,7 +1104,7 @@ void PutClientInServer(edict_t *ent)
     ent->client = &game.clients[index];
     ent->takedamage = DAMAGE_AIM;
     ent->movetype = MOVETYPE_WALK;
-    ent->viewheight = 22;
+    ent->viewheight = fpv_mode->value ? 0 : 22;
     ent->inuse = true;
     ent->classname = "player";
     ent->mass = 200;
@@ -1517,6 +1517,8 @@ void ClientThink(edict_t *ent, usercmd_t *ucmd)
     edict_t *other;
     int     i, j;
     pmove_t pm;
+    vec3_t  aim_start, aim_end, aim_forward;
+    trace_t aim_trace;
 
     level.current_entity = ent;
     client = ent->client;
@@ -1547,8 +1549,12 @@ void ClientThink(edict_t *ent, usercmd_t *ucmd)
             client->ps.pmove.pm_type = PM_GIB;
         else if (ent->deadflag)
             client->ps.pmove.pm_type = PM_DEAD;
+        else if (fpv_mode->value)
+            client->ps.pmove.pm_type = PM_DRONE;
         else
             client->ps.pmove.pm_type = PM_NORMAL;
+
+        client->drone_throttle = Q_clipf(ucmd->upmove / 200.0f, -1, 1);
 
         pm_passent = ent;
         if (ent->health > 0)
@@ -1636,6 +1642,18 @@ void ClientThink(edict_t *ent, usercmd_t *ucmd)
 
     client->oldbuttons = client->buttons;
     client->buttons = ucmd->buttons;
+    if (client->ps.pmove.pm_type == PM_DRONE && ent->health > 0 &&
+        Q_atoi(Info_ValueForKey(client->pers.userinfo, "in_controller_tiny_autofire")) > 0 &&
+        !(client->buttons & BUTTON_ATTACK)) {
+        VectorCopy(ent->s.origin, aim_start);
+        aim_start[2] += ent->viewheight;
+        AngleVectors(client->v_angle, aim_forward, NULL, NULL);
+        VectorMA(aim_start, 8192, aim_forward, aim_end);
+        aim_trace = gi.trace(aim_start, NULL, NULL, aim_end, ent, MASK_SHOT);
+        if (aim_trace.ent && aim_trace.ent->inuse &&
+            aim_trace.ent->takedamage && aim_trace.ent->health > 0)
+            client->buttons |= BUTTON_ATTACK;
+    }
     client->latched_buttons |= client->buttons & ~client->oldbuttons;
 
     // save light level the player is standing on for

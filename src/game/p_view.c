@@ -208,6 +208,12 @@ void SV_CalcViewOffset(edict_t *ent)
     float       delta;
     vec3_t      v;
 
+    if (ent->client->ps.pmove.pm_type == PM_DRONE) {
+        VectorClear(ent->client->ps.kick_angles);
+        VectorClear(ent->client->ps.viewoffset);
+        return;
+    }
+
 //===================================
 
     // base angles
@@ -452,8 +458,8 @@ void P_FallingDamage(edict_t *ent)
     int     damage;
     vec3_t  dir;
 
-    if (ent->s.modelindex != MODELINDEX_PLAYER)
-        return;     // not in the player model
+    if (ent->s.modelindex != MODELINDEX_PLAYER || ent->client->ps.pmove.pm_type == PM_DRONE)
+        return;     // drone impacts bounce without falling damage
 
     if (ent->movetype == MOVETYPE_NOCLIP)
         return;
@@ -746,6 +752,10 @@ void G_SetClientSound(edict_t *ent)
 
     if (ent->waterlevel && (ent->watertype & (CONTENTS_LAVA | CONTENTS_SLIME)))
         ent->s.sound = gi.soundindex("player/fry.wav");
+    else if (ent->client->ps.pmove.pm_type == PM_DRONE)
+        ent->s.sound = gi.soundindex(ent->client->drone_throttle > 0.35f ? "fpv/motor_high.wav" :
+                                     ent->client->drone_throttle > 0.05f ? "fpv/motor_mid.wav" :
+                                     "fpv/motor_idle.wav");
     else if (strcmp(weap, "weapon_railgun") == 0)
         ent->s.sound = gi.soundindex("weapons/rg_hum.wav");
     else if (strcmp(weap, "weapon_bfg") == 0)

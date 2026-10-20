@@ -357,7 +357,7 @@ bool SV_WriteFrameToClient_Enhanced(client_t *client, unsigned maxsize)
         if (client->settings[CLS_NOBLEND]) {
             psFlags |= MSG_PS_IGNORE_BLEND;
         }
-        if (frame->ps.pmove.pm_type < PM_DEAD) {
+        if (PM_IS_ALIVE(frame->ps.pmove.pm_type)) {
             if (!(frame->ps.pmove.pm_flags & PMF_NO_PREDICTION)) {
                 psFlags |= MSG_PS_IGNORE_VIEWANGLES;
             }
@@ -369,7 +369,7 @@ bool SV_WriteFrameToClient_Enhanced(client_t *client, unsigned maxsize)
 
     clientEntityNum = 0;
     if (client->protocol == PROTOCOL_VERSION_Q2PRO) {
-        if (frame->ps.pmove.pm_type < PM_DEAD && !client->settings[CLS_RECORDING]) {
+        if (PM_IS_ALIVE(frame->ps.pmove.pm_type) && !client->settings[CLS_RECORDING]) {
             clientEntityNum = frame->clientNum + 1;
         }
         if (client->settings[CLS_NOPREDICT]) {

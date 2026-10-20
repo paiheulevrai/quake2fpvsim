@@ -38,6 +38,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 static struct {
     SDL_Window      *window;
     SDL_GLContext   *context;
+    SDL_GameController *controller;
     vidFlags_t      flags;
 
     int             width;
@@ -46,6 +47,9 @@ static struct {
     int             win_height;
 
     bool            wayland;
+    bool            controller_initialized;
+    bool            left_trigger;
+    bool            right_trigger;
     int             focus_hack;
 } sdl;
 
@@ -244,6 +248,11 @@ static int get_dpi_scale(void)
 
 static void shutdown(void)
 {
+    if (sdl.controller)
+        SDL_GameControllerClose(sdl.controller);
+    if (sdl.controller_initialized)
+        SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+
     if (sdl.context)
         SDL_GL_DeleteContext(sdl.context);
 
@@ -252,6 +261,48 @@ static void shutdown(void)
 
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
     memset(&sdl, 0, sizeof(sdl));
+}
+
+static void controller_open(int device_index)
+{
+    if (sdl.controller || !SDL_IsGameController(device_index))
+        return;
+
+    sdl.controller = SDL_GameControllerOpen(device_index);
+    if (!sdl.controller) {
+        Com_EPrintf("Couldn't open SDL controller: %s\n", SDL_GetError());
+        return;
+    }
+
+    Com_Printf("SDL controller initialized: %s\n",
+               SDL_GameControllerName(sdl.controller));
+}
+
+static void controller_close(unsigned time)
+{
+    if (!sdl.controller)
+        return;
+
+    IN_ControllerReset(time);
+    SDL_GameControllerClose(sdl.controller);
+    sdl.controller = NULL;
+    sdl.left_trigger = false;
+    sdl.right_trigger = false;
+}
+
+static void controller_init(void)
+{
+    int i;
+
+    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
+        Com_EPrintf("Couldn't initialize SDL controller: %s\n", SDL_GetError());
+        return;
+    }
+
+    sdl.controller_initialized = true;
+    SDL_GameControllerEventState(SDL_ENABLE);
+    for (i = 0; i < SDL_NumJoysticks(); i++)
+        controller_open(i);
 }
 
 static bool create_window_and_context(const vrect_t *rc)
@@ -331,6 +382,8 @@ static bool init(void)
     }
 
     Com_Printf("Using SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
+
+    controller_init();
 
     // activate disgusting wayland hacks
     sdl.wayland = !strcmp(SDL_GetCurrentVideoDriver(), "wayland");
@@ -479,6 +532,94 @@ static void mouse_wheel_event(SDL_MouseWheelEvent *event)
     }
 }
 
+static bool controller_is_current(SDL_JoystickID which)
+{
+    return sdl.controller && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl.controller)) == which;
+}
+
+static void controller_button_event(SDL_ControllerButtonEvent *event)
+{
+    unsigned key = 0;
+
+    if (!controller_is_current(event->which))
+        return;
+
+    if (Key_GetDest() & KEY_MENU) {
+        switch (event->button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:    key = K_UPARROW; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  key = K_DOWNARROW; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  key = K_LEFTARROW; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: key = K_RIGHTARROW; break;
+        case SDL_CONTROLLER_BUTTON_A:          key = K_ENTER; break;
+        case SDL_CONTROLLER_BUTTON_B:
+        case SDL_CONTROLLER_BUTTON_START:      key = K_ESCAPE; break;
+        }
+        if (key)
+            Key_Event(key, event->state, event->timestamp);
+        return;
+    }
+
+    switch (event->button) {
+    case SDL_CONTROLLER_BUTTON_A:
+        IN_ControllerButton(IN_CONTROLLER_USE, event->state, event->timestamp);
+        break;
+    case SDL_CONTROLLER_BUTTON_B:
+        IN_ControllerButton(IN_CONTROLLER_INVENTORY, event->state, event->timestamp);
+        break;
+    case SDL_CONTROLLER_BUTTON_X:
+        IN_ControllerButton(IN_CONTROLLER_WEAPON_NEXT, event->state, event->timestamp);
+        break;
+    case SDL_CONTROLLER_BUTTON_Y:
+        IN_ControllerButton(IN_CONTROLLER_WEAPON_PREV, event->state, event->timestamp);
+        break;
+    case SDL_CONTROLLER_BUTTON_START:
+        if (event->state) {
+            Key_Event(K_ESCAPE, true, event->timestamp);
+            Key_Event(K_ESCAPE, false, event->timestamp);
+        }
+        break;
+    }
+}
+
+static void controller_axis_event(SDL_ControllerAxisEvent *event)
+{
+    float value;
+    bool down;
+
+    if (!controller_is_current(event->which))
+        return;
+
+    value = event->value < 0 ? (float)event->value / 32768.0f : (float)event->value / 32767.0f;
+    switch (event->axis) {
+    case SDL_CONTROLLER_AXIS_LEFTX:
+        IN_ControllerAxis(IN_CONTROLLER_LEFT_X, value);
+        break;
+    case SDL_CONTROLLER_AXIS_LEFTY:
+        IN_ControllerAxis(IN_CONTROLLER_LEFT_Y, value);
+        break;
+    case SDL_CONTROLLER_AXIS_RIGHTX:
+        IN_ControllerAxis(IN_CONTROLLER_RIGHT_X, value);
+        break;
+    case SDL_CONTROLLER_AXIS_RIGHTY:
+        IN_ControllerAxis(IN_CONTROLLER_RIGHT_Y, value);
+        break;
+    case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+        down = value > 0.5f;
+        if (down != sdl.left_trigger) {
+            sdl.left_trigger = down;
+            IN_ControllerButton(IN_CONTROLLER_JUMP, down, event->timestamp);
+        }
+        break;
+    case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+        down = value > 0.5f;
+        if (down != sdl.right_trigger) {
+            sdl.right_trigger = down;
+            IN_ControllerButton(IN_CONTROLLER_ATTACK, down, event->timestamp);
+        }
+        break;
+    }
+}
+
 static void pump_events(void)
 {
     SDL_Event    event;
@@ -506,6 +647,20 @@ static void pump_events(void)
             break;
         case SDL_MOUSEWHEEL:
             mouse_wheel_event(&event.wheel);
+            break;
+        case SDL_CONTROLLERDEVICEADDED:
+            controller_open(event.cdevice.which);
+            break;
+        case SDL_CONTROLLERDEVICEREMOVED:
+            if (controller_is_current(event.cdevice.which))
+                controller_close(event.cdevice.timestamp);
+            break;
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+            controller_button_event(&event.cbutton);
+            break;
+        case SDL_CONTROLLERAXISMOTION:
+            controller_axis_event(&event.caxis);
             break;
         }
     }

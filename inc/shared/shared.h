@@ -903,8 +903,11 @@ typedef enum {
     // no acceleration or turning
     PM_DEAD,
     PM_GIB,     // different bounding box
-    PM_FREEZE
+    PM_FREEZE,
+    PM_DRONE    // Tinywhoop flight; keep existing protocol values unchanged
 } pmtype_t;
+
+#define PM_IS_ALIVE(type) ((type) < PM_DEAD || (type) == PM_DRONE)
 
 // pmove->pm_flags
 #define PMF_DUCKED          BIT(0)

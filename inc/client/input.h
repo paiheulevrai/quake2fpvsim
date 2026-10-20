@@ -25,3 +25,23 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 void IN_Frame(void);
 void IN_Activate(void);
 void IN_WarpMouse(int x, int y);
+
+typedef enum {
+    IN_CONTROLLER_ATTACK,
+    IN_CONTROLLER_JUMP,
+    IN_CONTROLLER_USE,
+    IN_CONTROLLER_INVENTORY,
+    IN_CONTROLLER_WEAPON_NEXT,
+    IN_CONTROLLER_WEAPON_PREV
+} in_controller_button_t;
+
+typedef enum {
+    IN_CONTROLLER_LEFT_X,
+    IN_CONTROLLER_LEFT_Y,
+    IN_CONTROLLER_RIGHT_X,
+    IN_CONTROLLER_RIGHT_Y
+} in_controller_axis_t;
+
+void IN_ControllerAxis(in_controller_axis_t axis, float value);
+void IN_ControllerButton(in_controller_button_t button, bool down, unsigned time);
+void IN_ControllerReset(unsigned time);

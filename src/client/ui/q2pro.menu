@@ -220,10 +220,11 @@ end
 
 begin singleplayer
     banner m_banner_game
-    action easy "skill 0; deathmatch 0; coop 0; maxclients 1; newgame"
-    action medium "skill 1; deathmatch 0; coop 0; maxclients 1; newgame"
-    action hard "skill 2; deathmatch 0; coop 0; maxclients 1; newgame"
-    action nightmare "skill 3; deathmatch 0; coop 0; maxclients 1; newgame"
+    action easy "set fpv_mode 0; skill 0; deathmatch 0; coop 0; maxclients 1; newgame"
+    action medium "set fpv_mode 0; skill 1; deathmatch 0; coop 0; maxclients 1; newgame"
+    action hard "set fpv_mode 0; skill 2; deathmatch 0; coop 0; maxclients 1; newgame"
+    action nightmare "set fpv_mode 0; skill 3; deathmatch 0; coop 0; maxclients 1; newgame"
+    action "tinywhoop" "set fpv_mode 1; skill 1; deathmatch 0; coop 0; maxclients 1; newgame"
     blank
     action "load game..." pushmenu loadgame
     action "save game..." pushmenu savegame
@@ -315,10 +316,39 @@ end
 begin input
     title "Input Setup"
     field --numeric --width 8 "mouse sens" sensitivity
+    action "controller setup" pushmenu controller
     toggle "auto sens" m_autosens
     toggle "mouse filter" m_filter
     toggle "free look" freelook
     toggle "always run" cl_run
+end
+
+begin controller
+    title "Controller Setup"
+    range "aim speed" in_controller_sensitivity 1 720 10
+    range "move speed" in_controller_move_scale 0 1 0.05
+    range "stick deadzone" in_controller_deadzone 0 0.95 0.05
+    range "stick response" in_controller_response 1 3 0.25
+    toggle "invert vertical aim" in_controller_invert_y
+    action "tinywhoop setup" pushmenu tinycontroller
+end
+
+begin tinycontroller
+    title "Tinywhoop Setup"
+    toggle "acro flight" in_controller_acro
+    toggle "autofire" in_controller_tiny_autofire
+    toggle "FPV OSD" scr_fpv_osd
+    range "roll RC rate" in_controller_roll_rc_rate 0.1 2 0.01
+    range "roll S rate" in_controller_roll_super_rate 0 0.95 0.01
+    range "roll RC expo" in_controller_roll_expo 0 1 0.01
+    range "pitch RC rate" in_controller_pitch_rc_rate 0.1 2 0.01
+    range "pitch S rate" in_controller_pitch_super_rate 0 0.95 0.01
+    range "pitch RC expo" in_controller_pitch_expo 0 1 0.01
+    range "yaw RC rate" in_controller_yaw_rc_rate 0.1 2 0.01
+    range "yaw S rate" in_controller_yaw_super_rate 0 0.95 0.01
+    range "yaw RC expo" in_controller_yaw_expo 0 1 0.01
+    range "hover stick" in_controller_tiny_hover 0.3 0.8 0.05
+    range "throttle softness" in_controller_tiny_throttle_expo 0 1 0.05
 end
 
 begin keys

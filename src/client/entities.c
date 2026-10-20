@@ -37,7 +37,7 @@ static inline bool entity_is_optimized(const centity_state_t *state)
 {
     return cls.serverProtocol == PROTOCOL_VERSION_Q2PRO
         && state->number == cl.frame.clientNum + 1
-        && cl.frame.ps.pmove.pm_type < PM_DEAD;
+        && PM_IS_ALIVE(cl.frame.ps.pmove.pm_type);
 }
 
 static inline void
@@ -272,7 +272,7 @@ static void set_active_state(void)
         // set initial cl.predicted_origin and cl.predicted_angles
         VectorScale(cl.frame.ps.pmove.origin, 0.125f, cl.predicted_origin);
         VectorScale(cl.frame.ps.pmove.velocity, 0.125f, cl.predicted_velocity);
-        if (cl.frame.ps.pmove.pm_type < PM_DEAD &&
+        if (PM_IS_ALIVE(cl.frame.ps.pmove.pm_type) &&
             cls.serverProtocol > PROTOCOL_VERSION_DEFAULT) {
             // enhanced servers don't send viewangles
             CL_PredictAngles();
@@ -1397,10 +1397,10 @@ void CL_CalcViewValues(void)
             LerpAngles(ops->viewangles, ps->viewangles, lerp,
                        cl.refdef.viewangles);
         }
-    } else if (ps->pmove.pm_type < PM_DEAD) {
+    } else if (PM_IS_ALIVE(ps->pmove.pm_type)) {
         // use predicted values
         VectorCopy(cl.predicted_angles, cl.refdef.viewangles);
-    } else if (ops->pmove.pm_type < PM_DEAD && cls.serverProtocol > PROTOCOL_VERSION_DEFAULT) {
+    } else if (PM_IS_ALIVE(ops->pmove.pm_type) && cls.serverProtocol > PROTOCOL_VERSION_DEFAULT) {
         // lerp from predicted angles, since enhanced servers
         // do not send viewangles each frame
         LerpAngles(cl.predicted_angles, ps->viewangles, lerp, cl.refdef.viewangles);

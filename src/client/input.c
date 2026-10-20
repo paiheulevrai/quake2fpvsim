@@ -18,6 +18,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // cl.input.c  -- builds an intended movement command to send to the server
 
 #include "client.h"
+#include "client/controller_curve.h"
+#include "client/drone_rates.h"
 #include "common/crc.h"
 
 static cvar_t    *cl_nodelta;
@@ -70,6 +72,34 @@ static in_state_t   input;
 
 static cvar_t    *in_enable;
 static cvar_t    *in_grab;
+static cvar_t    *in_controller_enable;
+static cvar_t    *in_controller_sensitivity;
+static cvar_t    *in_controller_move_scale;
+static cvar_t    *in_controller_deadzone;
+static cvar_t    *in_controller_response;
+static cvar_t    *in_controller_invert_y;
+static cvar_t    *in_controller_acro;
+static cvar_t    *in_controller_roll_rc_rate;
+static cvar_t    *in_controller_roll_super_rate;
+static cvar_t    *in_controller_roll_expo;
+static cvar_t    *in_controller_pitch_rc_rate;
+static cvar_t    *in_controller_pitch_super_rate;
+static cvar_t    *in_controller_pitch_expo;
+static cvar_t    *in_controller_yaw_rc_rate;
+static cvar_t    *in_controller_yaw_super_rate;
+static cvar_t    *in_controller_yaw_expo;
+static cvar_t    *in_controller_tiny_hover;
+static cvar_t    *in_controller_tiny_throttle_expo;
+static cvar_t    *in_controller_tiny_autofire;
+
+typedef struct {
+    float       left_x;
+    float       left_y;
+    float       right_x;
+    float       right_y;
+} controller_state_t;
+
+static controller_state_t controller;
 
 static bool IN_GetCurrentGrab(void)
 {
@@ -165,6 +195,7 @@ void IN_Shutdown(void)
     }
 
     memset(&input, 0, sizeof(input));
+    memset(&controller, 0, sizeof(controller));
 }
 
 static void in_changed_hard(cvar_t *self)
@@ -408,6 +439,110 @@ static void IN_MLookUp(void)
         IN_CenterView();
 }
 
+static void IN_ControllerKey(kbutton_t *key, bool down, int keynum, unsigned time)
+{
+    if (down) {
+        if (key->down[0] == keynum || key->down[1] == keynum)
+            return;
+        if (!key->down[0])
+            key->down[0] = keynum;
+        else if (!key->down[1])
+            key->down[1] = keynum;
+        else
+            return;
+        if (!(key->state & 1)) {
+            key->downtime = time;
+            key->state |= 1 + 2;
+        }
+        return;
+    }
+
+    if (key->down[0] == keynum)
+        key->down[0] = 0;
+    else if (key->down[1] == keynum)
+        key->down[1] = 0;
+    else
+        return;
+    if (key->down[0] || key->down[1] || !(key->state & 1))
+        return;
+    if (time > key->downtime)
+        key->msec += time - key->downtime;
+    key->state &= ~1;
+}
+
+void IN_ControllerAxis(in_controller_axis_t axis, float value)
+{
+    float *axes = &controller.left_x;
+
+    if (axis < IN_CONTROLLER_LEFT_X || axis > IN_CONTROLLER_RIGHT_Y)
+        return;
+    axes[axis] = Q_clipf(value, -1, 1);
+}
+
+void IN_ControllerButton(in_controller_button_t button, bool down, unsigned time)
+{
+    if (down && Key_GetDest() != KEY_GAME)
+        return;
+
+    if (down && button == IN_CONTROLLER_ATTACK && cls.state == ca_cinematic) {
+        SCR_FinishCinematic();
+        return;
+    }
+
+    switch (button) {
+    case IN_CONTROLLER_ATTACK:
+        IN_ControllerKey(&in_attack, down, 250, time);
+        if (down && cl_instantpacket->integer && cls.state == ca_active && !cls.demo.playback)
+            cl.sendPacketNow = true;
+        break;
+    case IN_CONTROLLER_JUMP:
+        IN_ControllerKey(&in_up, down, 251, time);
+        break;
+    case IN_CONTROLLER_USE:
+        IN_ControllerKey(&in_use, down, 252, time);
+        if (down && cl_instantpacket->integer && cls.state == ca_active && !cls.demo.playback)
+            cl.sendPacketNow = true;
+        break;
+    case IN_CONTROLLER_INVENTORY:
+        if (down)
+            Cbuf_AddText(&cmd_buffer, "inven\n");
+        break;
+    case IN_CONTROLLER_WEAPON_NEXT:
+        if (down)
+            Cbuf_AddText(&cmd_buffer, "weapnext\n");
+        break;
+    case IN_CONTROLLER_WEAPON_PREV:
+        if (down)
+            Cbuf_AddText(&cmd_buffer, "weapprev\n");
+        break;
+    }
+}
+
+void IN_ControllerReset(unsigned time)
+{
+    IN_ControllerButton(IN_CONTROLLER_ATTACK, false, time);
+    IN_ControllerButton(IN_CONTROLLER_JUMP, false, time);
+    IN_ControllerButton(IN_CONTROLLER_USE, false, time);
+    memset(&controller, 0, sizeof(controller));
+}
+
+static void IN_ControllerApplyDeadzone(float *x, float *y, float response)
+{
+    float deadzone = Q_clipf(in_controller_deadzone->value, 0, 0.95f);
+    float original_length = sqrtf(*x * *x + *y * *y);
+
+    if (original_length <= deadzone) {
+        *x = *y = 0;
+        return;
+    }
+
+    float length = Q_clipf((original_length - deadzone) / (1 - deadzone), 0, 1);
+    length = powf(length, Q_clipf(response, 1, 3));
+    float scale = length / original_length;
+    *x *= scale;
+    *y *= scale;
+}
+
 /*
 ===============
 CL_KeyState
@@ -513,6 +648,10 @@ Moves the local angle positions
 static void CL_AdjustAngles(int msec)
 {
     float speed;
+    float left_x = controller.left_x;
+    float left_y = controller.left_y;
+    float right_x = controller.right_x;
+    float right_y = controller.right_y;
 
     if (in_speed.state & 1)
         speed = msec * cl_anglespeedkey->value * 0.001f;
@@ -530,6 +669,40 @@ static void CL_AdjustAngles(int msec)
 
     cl.viewangles[PITCH] -= speed * cl_pitchspeed->value * CL_KeyState(&in_lookup);
     cl.viewangles[PITCH] += speed * cl_pitchspeed->value * CL_KeyState(&in_lookdown);
+
+    if (in_controller_enable->integer && cls.key_dest == KEY_GAME) {
+        if (cl.frame.ps.pmove.pm_type == PM_DRONE) {
+            IN_ControllerApplyDeadzone(&left_x, &left_y, 1);
+            IN_ControllerApplyDeadzone(&right_x, &right_y, 1);
+            speed = msec * 0.001f;
+            cl.viewangles[YAW] -= speed * IN_DroneRate(left_x,
+                Q_clipf(in_controller_yaw_rc_rate->value, 0.1f, 2),
+                Q_clipf(in_controller_yaw_super_rate->value, 0, 0.95f),
+                Q_clipf(in_controller_yaw_expo->value, 0, 1));
+            if (in_controller_acro->integer) {
+                cl.viewangles[PITCH] -= speed * IN_DroneRate(right_y,
+                    Q_clipf(in_controller_pitch_rc_rate->value, 0.1f, 2),
+                    Q_clipf(in_controller_pitch_super_rate->value, 0, 0.95f),
+                    Q_clipf(in_controller_pitch_expo->value, 0, 1)) *
+                    (in_controller_invert_y->integer ? -1 : 1);
+                cl.viewangles[ROLL] += speed * IN_DroneRate(right_x,
+                    Q_clipf(in_controller_roll_rc_rate->value, 0.1f, 2),
+                    Q_clipf(in_controller_roll_super_rate->value, 0, 0.95f),
+                    Q_clipf(in_controller_roll_expo->value, 0, 1));
+            } else {
+                float settle = Q_clipf(msec * 0.008f, 0, 1);
+                float pitch = -right_y * 35 * (in_controller_invert_y->integer ? -1 : 1);
+
+                cl.viewangles[PITCH] += (pitch - cl.viewangles[PITCH]) * settle;
+                cl.viewangles[ROLL] += (right_x * 35 - cl.viewangles[ROLL]) * settle;
+            }
+        } else {
+            IN_ControllerApplyDeadzone(&right_x, &right_y, in_controller_response->value);
+            speed = msec * 0.001f * Q_clipf(in_controller_sensitivity->value, 1, 720);
+            cl.viewangles[YAW] -= speed * right_x;
+            cl.viewangles[PITCH] += speed * right_y * (in_controller_invert_y->integer ? -1 : 1);
+        }
+    }
 }
 
 /*
@@ -541,6 +714,9 @@ Build the intended movement vector
 */
 static void CL_BaseMove(vec3_t move)
 {
+    float left_x = controller.left_x;
+    float left_y = controller.left_y;
+
     if (in_strafe.state & 1) {
         move[1] += cl_sidespeed->value * CL_KeyState(&in_right);
         move[1] -= cl_sidespeed->value * CL_KeyState(&in_left);
@@ -561,6 +737,22 @@ static void CL_BaseMove(vec3_t move)
     if ((in_speed.state & 1) ^ cl_run->integer) {
         VectorScale(move, 2, move);
     }
+
+    if (in_controller_enable->integer && cls.key_dest == KEY_GAME) {
+        float scale = Q_clipf(in_controller_move_scale->value, 0, 1);
+        float run = cl_run->integer ? 2 : 1;
+
+        if (cl.frame.ps.pmove.pm_type == PM_DRONE) {
+            IN_ControllerApplyDeadzone(&left_x, &left_y, 1);
+            move[2] += IN_DroneThrottleCurve(-left_y, cl.frame.ps.pmove.gravity,
+                                             in_controller_tiny_hover->value,
+                                             in_controller_tiny_throttle_expo->value) * 200;
+        } else {
+            IN_ControllerApplyDeadzone(&left_x, &left_y, in_controller_response->value);
+            move[0] -= left_y * cl_forwardspeed->value * scale * run;
+            move[1] += left_x * cl_sidespeed->value * scale * run;
+        }
+    }
 }
 
 static void CL_ClampSpeed(vec3_t move)
@@ -575,6 +767,9 @@ static void CL_ClampSpeed(vec3_t move)
 static void CL_ClampPitch(void)
 {
     float pitch, angle;
+
+    if (cl.frame.ps.pmove.pm_type == PM_DRONE)
+        return;
 
     pitch = SHORT2ANGLE(cl.frame.ps.pmove.delta_angles[PITCH]);
     angle = cl.viewangles[PITCH] + pitch;
@@ -723,6 +918,26 @@ void CL_RegisterInput(void)
     m_autosens = Cvar_Get("m_autosens", "0", 0);
     m_autosens->changed = m_autosens_changed;
     m_autosens_changed(m_autosens);
+
+    in_controller_enable = Cvar_Get("in_controller_enable", "1", CVAR_ARCHIVE);
+    in_controller_sensitivity = Cvar_Get("in_controller_sensitivity", "180", CVAR_ARCHIVE);
+    in_controller_move_scale = Cvar_Get("in_controller_move_scale", "1", CVAR_ARCHIVE);
+    in_controller_deadzone = Cvar_Get("in_controller_deadzone", "0.15", CVAR_ARCHIVE);
+    in_controller_response = Cvar_Get("in_controller_response", "2", CVAR_ARCHIVE);
+    in_controller_invert_y = Cvar_Get("in_controller_invert_y", "0", CVAR_ARCHIVE);
+    in_controller_acro = Cvar_Get("in_controller_acro", "1", CVAR_ARCHIVE);
+    in_controller_roll_rc_rate = Cvar_Get("in_controller_roll_rc_rate", "0.65", CVAR_ARCHIVE);
+    in_controller_roll_super_rate = Cvar_Get("in_controller_roll_super_rate", "0.78", CVAR_ARCHIVE);
+    in_controller_roll_expo = Cvar_Get("in_controller_roll_expo", "0.10", CVAR_ARCHIVE);
+    in_controller_pitch_rc_rate = Cvar_Get("in_controller_pitch_rc_rate", "0.65", CVAR_ARCHIVE);
+    in_controller_pitch_super_rate = Cvar_Get("in_controller_pitch_super_rate", "0.74", CVAR_ARCHIVE);
+    in_controller_pitch_expo = Cvar_Get("in_controller_pitch_expo", "0.10", CVAR_ARCHIVE);
+    in_controller_yaw_rc_rate = Cvar_Get("in_controller_yaw_rc_rate", "0.55", CVAR_ARCHIVE);
+    in_controller_yaw_super_rate = Cvar_Get("in_controller_yaw_super_rate", "0.74", CVAR_ARCHIVE);
+    in_controller_yaw_expo = Cvar_Get("in_controller_yaw_expo", "0.10", CVAR_ARCHIVE);
+    in_controller_tiny_hover = Cvar_Get("in_controller_tiny_hover", "0.6", CVAR_ARCHIVE);
+    in_controller_tiny_throttle_expo = Cvar_Get("in_controller_tiny_throttle_expo", "0.8", CVAR_ARCHIVE);
+    in_controller_tiny_autofire = Cvar_Get("in_controller_tiny_autofire", "1", CVAR_ARCHIVE | CVAR_USERINFO);
 }
 
 /*

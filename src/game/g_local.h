@@ -506,6 +506,7 @@ extern  cvar_t  *deathmatch;
 extern  cvar_t  *coop;
 extern  cvar_t  *dmflags;
 extern  cvar_t  *skill;
+extern  cvar_t  *fpv_mode;
 extern  cvar_t  *fraglimit;
 extern  cvar_t  *timelimit;
 extern  cvar_t  *password;
@@ -932,6 +933,7 @@ struct gclient_s {
     int         grenade_framenum;
     int         silencer_shots;
     int         weapon_sound;
+    float       drone_throttle;
 
     int         pickup_msg_framenum;
 

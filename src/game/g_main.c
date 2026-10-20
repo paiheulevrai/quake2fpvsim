@@ -33,6 +33,7 @@ cvar_t  *deathmatch;
 cvar_t  *coop;
 cvar_t  *dmflags;
 cvar_t  *skill;
+cvar_t  *fpv_mode;
 cvar_t  *fraglimit;
 cvar_t  *timelimit;
 cvar_t  *password;
@@ -139,6 +140,7 @@ void InitGame(void)
     deathmatch = gi.cvar("deathmatch", "0", CVAR_LATCH);
     coop = gi.cvar("coop", "0", CVAR_LATCH);
     skill = gi.cvar("skill", "1", CVAR_LATCH);
+    fpv_mode = gi.cvar("fpv_mode", "0", CVAR_LATCH | CVAR_ARCHIVE);
     maxentities = gi.cvar("maxentities", "1024", CVAR_LATCH);
 
     // change anytime vars

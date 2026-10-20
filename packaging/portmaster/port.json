@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "name": "Q2PRO",
+  "items": [
+    {
+      "name": "Q2PRO",
+      "desc": "Quake II with native dual-stick controls",
+      "exec": "Q2PRO.sh",
+      "runtime": "sdl2"
+    }
+  ]
+}

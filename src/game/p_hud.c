@@ -290,7 +290,9 @@ void HelpComputer(edict_t *ent)
     char    string[1024];
     char    *sk;
 
-    if (skill->value == 0)
+    if (fpv_mode->value)
+        sk = "tinywhoop";
+    else if (skill->value == 0)
         sk = "easy";
     else if (skill->value == 1)
         sk = "medium";

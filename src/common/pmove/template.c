@@ -1010,9 +1010,63 @@ static void PM_ClampAngles(void)
         }
 
         // don't let the player look up or down more than 90 degrees
-        pm->viewangles[PITCH] = Q_clipf(pm->viewangles[PITCH], -89, 89);
+        if (pm->s.pm_type != PM_DRONE)
+            pm->viewangles[PITCH] = Q_clipf(pm->viewangles[PITCH], -89, 89);
     }
     AngleVectors(pm->viewangles, pml.forward, pml.right, pml.up);
+}
+
+static void PM_DroneMove(void)
+{
+    float time_left, speed, throttle;
+    vec3_t end;
+    trace_t trace;
+    int i, bump;
+
+    for (i = 0; i < 3; i++) {
+        pm->mins[i] = -8;
+        pm->maxs[i] = 8;
+    }
+    pm->viewheight = 0;
+    pm->s.pm_flags &= ~(PMF_ON_GROUND | PMF_DUCKED | PMF_JUMP_HELD |
+                        PMF_TIME_WATERJUMP | PMF_TIME_LAND | PMF_TIME_TELEPORT);
+    pm->s.pm_time = 0;
+
+    if (pm->snapinitial)
+        PM_InitialSnapPosition();
+
+    // Centered stick means motors off in acro, not hover. The lower half of
+    // the spring-centered stick remains idle; pushing forward adds thrust.
+    throttle = Q_clipf(pm->cmd.upmove / 200.0f, 0, 1);
+    VectorMA(pml.velocity, throttle * 1400 * pml.frametime, pml.up, pml.velocity);
+    pml.velocity[2] -= pm->s.gravity * pml.frametime;
+    VectorScale(pml.velocity, 1.0f / (1.0f + 1.8f * pml.frametime), pml.velocity);
+    speed = VectorLength(pml.velocity);
+    if (speed > 400)
+        VectorScale(pml.velocity, 400 / speed, pml.velocity);
+
+    time_left = pml.frametime;
+    for (bump = 0; bump < 4 && time_left > 0; bump++) {
+        VectorMA(pml.origin, time_left, pml.velocity, end);
+        trace = PMOVE_TRACE(pml.origin, pm->mins, pm->maxs, end);
+        if (trace.allsolid) {
+            VectorClear(pml.velocity);
+            break;
+        }
+        VectorCopy(trace.endpos, pml.origin);
+        if (trace.fraction == 1)
+            break;
+        if (pm->numtouch < MAXTOUCH && trace.ent)
+            pm->touchents[pm->numtouch++] = trace.ent;
+        time_left *= 1 - trace.fraction;
+        PM_ClipVelocity(pml.velocity, trace.plane.normal, pml.velocity, 1.45f);
+        VectorMA(pml.origin, 0.125f, trace.plane.normal, pml.origin);
+    }
+
+    PM_SnapPosition();
+    PM_CategorizePosition();
+    pm->groundentity = NULL;
+    pm->s.pm_flags &= ~(PMF_ON_GROUND | PMF_TIME_LAND);
 }
 
 /*
@@ -1055,6 +1109,11 @@ void PMOVE_FUNC(PMOVE_TYPE *pmove, const pmoveParams_t *params)
     }
 
     pml.frametime = pm->cmd.msec * 0.001f;
+
+    if (pm->s.pm_type == PM_DRONE) {
+        PM_DroneMove();
+        return;
+    }
 
     if (pm->s.pm_type >= PM_DEAD) {
         pm->cmd.forwardmove = 0;

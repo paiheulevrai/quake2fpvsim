@@ -87,6 +87,7 @@ static cvar_t   *scr_font;
 static cvar_t   *scr_scale;
 
 static cvar_t   *scr_crosshair;
+static cvar_t   *scr_fpv_osd;
 
 static cvar_t   *scr_chathud;
 static cvar_t   *scr_chathud_lines;
@@ -1443,6 +1444,7 @@ void SCR_Init(void)
     scr_scale->changed = scr_scale_changed;
     scr_crosshair = Cvar_Get("crosshair", "0", CVAR_ARCHIVE);
     scr_crosshair->changed = scr_crosshair_changed;
+    scr_fpv_osd = Cvar_Get("scr_fpv_osd", "1", CVAR_ARCHIVE);
 
     scr_netgraph = Cvar_Get("netgraph", "0", 0);
     scr_timegraph = Cvar_Get("timegraph", "0", 0);
@@ -2269,6 +2271,81 @@ draw:
     SCR_ExecuteLayoutString(cl.layout);
 }
 
+static void SCR_DrawFpvOsd(void)
+{
+    char text[32];
+    int cx = scr.hud_width / 2, cy = scr.hud_height / 2;
+    int bar_offset = min(scr.hud_width / 4, 240);
+    int bar_half_height = min(scr.hud_height / 4, 110);
+    float pitch, roll, c, s, speed;
+    vec3_t ground_end;
+    trace_t ground_trace;
+    const uint32_t green = MakeColor(80, 255, 120, 230);
+
+    if (!scr_fpv_osd->integer || cl.frame.ps.pmove.pm_type != PM_DRONE ||
+        cl.frame.ps.stats[STAT_HEALTH] <= 0 ||
+        (cl.frame.ps.stats[STAT_LAYOUTS] & LAYOUTS_HIDE_HUD))
+        return;
+
+    pitch = remainderf(cl.refdef.viewangles[PITCH], 360.0f);
+    roll = DEG2RAD(cl.refdef.viewangles[ROLL]);
+    c = cosf(roll);
+    s = sinf(roll);
+
+    // Zero degrees on the pitch ladders stays aligned with the moving horizon.
+    for (int degrees = -180; degrees <= 180; degrees += 10) {
+        int y = cy + Q_rint((degrees - pitch) * 2.0f);
+        int tick_width = (degrees % 30 == 0) ? 10 : 5;
+        if (abs(y - cy) > bar_half_height)
+            continue;
+        R_DrawFill32(cx - bar_offset, y, tick_width, 2, green);
+        R_DrawFill32(cx + bar_offset - tick_width, y, tick_width, 2, green);
+        if (degrees % 30 == 0) {
+            Q_snprintf(text, sizeof(text), "%+d", degrees);
+            R_SetColor(green);
+            HUD_DrawRightString(cx - bar_offset - 5, y - 4, text);
+            HUD_DrawString(cx + bar_offset + 5, y - 4, text);
+        }
+    }
+    R_DrawFill32(cx - bar_offset - 3, cy - bar_half_height, 2, bar_half_height * 2, green);
+    R_DrawFill32(cx + bar_offset + 1, cy - bar_half_height, 2, bar_half_height * 2, green);
+    R_DrawFill32(cx - bar_offset + 12, cy, 11, 2, green);
+    R_DrawFill32(cx + bar_offset - 23, cy, 11, 2, green);
+
+    // Roll tilts the horizon while pitch moves it along the degree ladders.
+    for (int t = -bar_offset + 25; t <= bar_offset - 25; t += 8) {
+        int x = cx + Q_rint(t * c + pitch * 2.0f * s);
+        int y = cy - Q_rint(t * s + pitch * 2.0f * c);
+        if (abs(x - cx) < bar_offset - 18 && abs(y - cy) <= bar_half_height)
+            R_DrawFill32(x, y, 2, 2, green);
+    }
+    R_DrawFill32(cx - 22, cy, 13, 2, green);
+    R_DrawFill32(cx + 10, cy, 13, 2, green);
+    R_DrawFill32(cx, cy - 1, 2, 4, green);
+
+    speed = sqrtf((float)cl.frame.ps.pmove.velocity[0] * cl.frame.ps.pmove.velocity[0] +
+                  (float)cl.frame.ps.pmove.velocity[1] * cl.frame.ps.pmove.velocity[1] +
+                  (float)cl.frame.ps.pmove.velocity[2] * cl.frame.ps.pmove.velocity[2]) * 0.125f;
+    R_SetColor(green);
+    Q_snprintf(text, sizeof(text), "SPD %d", Q_rint(speed));
+    HUD_DrawString(8, 8, text);
+    VectorCopy(cl.refdef.vieworg, ground_end);
+    ground_end[2] -= 8192;
+    CL_Trace(&ground_trace, cl.refdef.vieworg, ground_end,
+             vec3_origin, vec3_origin, MASK_SOLID);
+    if (ground_trace.fraction < 1.0f && !ground_trace.startsolid) {
+        Q_snprintf(text, sizeof(text), "ALT %d", Q_rint(cl.refdef.vieworg[2] - ground_trace.endpos[2]));
+        HUD_DrawRightString(scr.hud_width - 8, 8, text);
+    }
+    Q_snprintf(text, sizeof(text), "HDG %03d",
+               ((int)Q_rint(remainderf(cl.refdef.viewangles[YAW], 360.0f)) + 360) % 360);
+    HUD_DrawCenterString(cx, 8, text);
+    Q_snprintf(text, sizeof(text), "P %+d  R %+d", Q_rint(pitch),
+               Q_rint(remainderf(cl.refdef.viewangles[ROLL], 360.0f)));
+    HUD_DrawCenterString(cx, cy + bar_half_height + 10, text);
+    R_ClearColor();
+}
+
 static void SCR_Draw2D(void)
 {
     if (scr_draw2d->integer <= 0)
@@ -2296,6 +2373,7 @@ static void SCR_Draw2D(void)
         SCR_DrawDebugGraph();
 
     SCR_DrawStats();
+    SCR_DrawFpvOsd();
 
     SCR_DrawLayout();
 

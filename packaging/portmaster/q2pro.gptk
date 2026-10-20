@@ -1,0 +1,3 @@
+# Q2PRO intentionally does not launch GPTOKEYB.
+# In particular, no left_analog_* or right_analog_* mapping is permitted here:
+# both sticks are read as native SDL GameController axes by the engine.
