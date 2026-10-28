@@ -2,6 +2,8 @@
 
 Fly through Quake II as a small FPV drone. This fork of [Q2PRO](https://github.com/actionquake/q2pro) adds a **Tinywhoop** single-player mode with controller flight, an FPV on-screen display, and target-aware autofire. The Quake II weapons and campaign remain in place.
 
+https://www.youtube.com/watch?v=Q_iBFeudtIM
+
 ## What is in the FPV mode?
 
 - **Drone flight:** throttle, yaw, pitch and roll; a small collision hull; inertia and wall bounces. Acro mode is enabled by default, with an optional self-leveling angle mode.
