@@ -21,6 +21,5 @@ cp "$ROOT/packaging/portmaster/q2pro.gptk" "$ROOT/packaging/portmaster/README.md
     "$ROOT/packaging/portmaster/port.json" "$PACKAGE/q2pro/"
 cp "$ROOT/packaging/portmaster/Q2PRO.sh" "$PACKAGE/"
 cp "$ROOT/LICENSE" "$PACKAGE/q2pro/LICENSE"
-python3 "$ROOT/packaging/portmaster/generate_motor.py" "$PACKAGE/q2pro/baseq2/sound/fpv"
 chmod +x "$PACKAGE/Q2PRO.sh" "$PACKAGE/q2pro/q2pro_glsl"
 (cd "$PACKAGE" && zip -qr "$BUILD/q2pro-portmaster-arm64.zip" .)

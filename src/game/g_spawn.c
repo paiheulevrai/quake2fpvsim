@@ -948,11 +948,6 @@ void SP_worldspawn(edict_t *ent)
         gi.cvar_set("sv_gravity", st.gravity);
 
     gi.soundindex("player/fry.wav");  // standing in lava / slime
-    if (fpv_mode->value) {
-        gi.soundindex("fpv/motor_idle.wav");
-        gi.soundindex("fpv/motor_mid.wav");
-        gi.soundindex("fpv/motor_high.wav");
-    }
     gi.soundindex("player/lava_in.wav");
     gi.soundindex("player/burn1.wav");
     gi.soundindex("player/burn2.wav");

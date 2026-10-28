@@ -42,6 +42,7 @@ typedef struct {
     float       friction;
     float       waterfriction;
     float       flyfriction;
+    float       drone_thrust_ratio;
 } pmoveParams_t;
 
 void PmoveOld(pmove_old_t *pmove, const pmoveParams_t *params);

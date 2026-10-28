@@ -715,12 +715,19 @@ static void PF_LocalSound(edict_t *target, const vec3_t origin,
 
 void PF_Pmove(void *pm)
 {
-    const pmoveParams_t *pmp = sv_client ? &sv_client->pmp : &svs.pmp;
+    pmoveParams_t pmp = sv_client ? sv_client->pmp : svs.pmp;
+
+    if (sv_client) {
+        const char *value = Info_ValueForKey(sv_client->userinfo,
+                                             "in_controller_tiny_thrust_ratio");
+        if (*value)
+            pmp.drone_thrust_ratio = Q_clipf(Q_atof(value), 1, 13);
+    }
 
     if (IS_NEW_GAME_API)
-        PmoveNew(pm, pmp);
+        PmoveNew(pm, &pmp);
     else
-        PmoveOld(pm, pmp);
+        PmoveOld(pm, &pmp);
 }
 
 static cvar_t *PF_cvar(const char *name, const char *value, int flags)

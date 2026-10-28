@@ -753,9 +753,7 @@ void G_SetClientSound(edict_t *ent)
     if (ent->waterlevel && (ent->watertype & (CONTENTS_LAVA | CONTENTS_SLIME)))
         ent->s.sound = gi.soundindex("player/fry.wav");
     else if (ent->client->ps.pmove.pm_type == PM_DRONE)
-        ent->s.sound = gi.soundindex(ent->client->drone_throttle > 0.35f ? "fpv/motor_high.wav" :
-                                     ent->client->drone_throttle > 0.05f ? "fpv/motor_mid.wav" :
-                                     "fpv/motor_idle.wav");
+        ent->s.sound = 0; // mixed continuously on the local audio thread
     else if (strcmp(weap, "weapon_railgun") == 0)
         ent->s.sound = gi.soundindex("weapons/rg_hum.wav");
     else if (strcmp(weap, "weapon_bfg") == 0)

@@ -27,21 +27,17 @@ void IN_Activate(void);
 void IN_WarpMouse(int x, int y);
 
 typedef enum {
-    IN_CONTROLLER_ATTACK,
-    IN_CONTROLLER_JUMP,
-    IN_CONTROLLER_USE,
-    IN_CONTROLLER_INVENTORY,
-    IN_CONTROLLER_WEAPON_NEXT,
-    IN_CONTROLLER_WEAPON_PREV
-} in_controller_button_t;
-
-typedef enum {
     IN_CONTROLLER_LEFT_X,
     IN_CONTROLLER_LEFT_Y,
     IN_CONTROLLER_RIGHT_X,
-    IN_CONTROLLER_RIGHT_Y
+    IN_CONTROLLER_RIGHT_Y,
+    IN_CONTROLLER_AXIS_5,
+    IN_CONTROLLER_AXIS_6,
+    IN_CONTROLLER_AXIS_7,
+    IN_CONTROLLER_AXIS_8,
+    IN_CONTROLLER_AXIS_COUNT
 } in_controller_axis_t;
 
 void IN_ControllerAxis(in_controller_axis_t axis, float value);
-void IN_ControllerButton(in_controller_button_t button, bool down, unsigned time);
-void IN_ControllerReset(unsigned time);
+float IN_ControllerAxisValue(int axis);
+void IN_ControllerReset(void);

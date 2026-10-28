@@ -1035,10 +1035,11 @@ static void PM_DroneMove(void)
     if (pm->snapinitial)
         PM_InitialSnapPosition();
 
-    // Centered stick means motors off in acro, not hover. The lower half of
-    // the spring-centered stick remains idle; pushing forward adds thrust.
+    // The command carries the radio's full throttle range from 0% to 100%.
     throttle = Q_clipf(pm->cmd.upmove / 200.0f, 0, 1);
-    VectorMA(pml.velocity, throttle * 1400 * pml.frametime, pml.up, pml.velocity);
+    VectorMA(pml.velocity, throttle * pm->s.gravity *
+             Q_clipf(pmp->drone_thrust_ratio, 1, 13) * pml.frametime,
+             pml.up, pml.velocity);
     pml.velocity[2] -= pm->s.gravity * pml.frametime;
     VectorScale(pml.velocity, 1.0f / (1.0f + 1.8f * pml.frametime), pml.velocity);
     speed = VectorLength(pml.velocity);

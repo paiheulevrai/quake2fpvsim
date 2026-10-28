@@ -18,7 +18,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // cl.input.c  -- builds an intended movement command to send to the server
 
 #include "client.h"
-#include "client/controller_curve.h"
 #include "client/drone_rates.h"
 #include "common/crc.h"
 
@@ -88,15 +87,15 @@ static cvar_t    *in_controller_pitch_expo;
 static cvar_t    *in_controller_yaw_rc_rate;
 static cvar_t    *in_controller_yaw_super_rate;
 static cvar_t    *in_controller_yaw_expo;
-static cvar_t    *in_controller_tiny_hover;
-static cvar_t    *in_controller_tiny_throttle_expo;
 static cvar_t    *in_controller_tiny_autofire;
+static cvar_t    *in_controller_tiny_thrust_ratio;
+static cvar_t    *in_controller_axis_yaw;
+static cvar_t    *in_controller_axis_throttle;
+static cvar_t    *in_controller_axis_roll;
+static cvar_t    *in_controller_axis_pitch;
 
 typedef struct {
-    float       left_x;
-    float       left_y;
-    float       right_x;
-    float       right_y;
+    float       axes[IN_CONTROLLER_AXIS_COUNT];
 } controller_state_t;
 
 static controller_state_t controller;
@@ -439,91 +438,33 @@ static void IN_MLookUp(void)
         IN_CenterView();
 }
 
-static void IN_ControllerKey(kbutton_t *key, bool down, int keynum, unsigned time)
-{
-    if (down) {
-        if (key->down[0] == keynum || key->down[1] == keynum)
-            return;
-        if (!key->down[0])
-            key->down[0] = keynum;
-        else if (!key->down[1])
-            key->down[1] = keynum;
-        else
-            return;
-        if (!(key->state & 1)) {
-            key->downtime = time;
-            key->state |= 1 + 2;
-        }
-        return;
-    }
-
-    if (key->down[0] == keynum)
-        key->down[0] = 0;
-    else if (key->down[1] == keynum)
-        key->down[1] = 0;
-    else
-        return;
-    if (key->down[0] || key->down[1] || !(key->state & 1))
-        return;
-    if (time > key->downtime)
-        key->msec += time - key->downtime;
-    key->state &= ~1;
-}
-
 void IN_ControllerAxis(in_controller_axis_t axis, float value)
 {
-    float *axes = &controller.left_x;
-
-    if (axis < IN_CONTROLLER_LEFT_X || axis > IN_CONTROLLER_RIGHT_Y)
+    if (axis < 0 || axis >= IN_CONTROLLER_AXIS_COUNT)
         return;
-    axes[axis] = Q_clipf(value, -1, 1);
+    controller.axes[axis] = Q_clipf(value, -1, 1);
 }
 
-void IN_ControllerButton(in_controller_button_t button, bool down, unsigned time)
+float IN_ControllerAxisValue(int axis)
 {
-    if (down && Key_GetDest() != KEY_GAME)
-        return;
-
-    if (down && button == IN_CONTROLLER_ATTACK && cls.state == ca_cinematic) {
-        SCR_FinishCinematic();
-        return;
-    }
-
-    switch (button) {
-    case IN_CONTROLLER_ATTACK:
-        IN_ControllerKey(&in_attack, down, 250, time);
-        if (down && cl_instantpacket->integer && cls.state == ca_active && !cls.demo.playback)
-            cl.sendPacketNow = true;
-        break;
-    case IN_CONTROLLER_JUMP:
-        IN_ControllerKey(&in_up, down, 251, time);
-        break;
-    case IN_CONTROLLER_USE:
-        IN_ControllerKey(&in_use, down, 252, time);
-        if (down && cl_instantpacket->integer && cls.state == ca_active && !cls.demo.playback)
-            cl.sendPacketNow = true;
-        break;
-    case IN_CONTROLLER_INVENTORY:
-        if (down)
-            Cbuf_AddText(&cmd_buffer, "inven\n");
-        break;
-    case IN_CONTROLLER_WEAPON_NEXT:
-        if (down)
-            Cbuf_AddText(&cmd_buffer, "weapnext\n");
-        break;
-    case IN_CONTROLLER_WEAPON_PREV:
-        if (down)
-            Cbuf_AddText(&cmd_buffer, "weapprev\n");
-        break;
-    }
+    if (axis < 0 || axis >= IN_CONTROLLER_AXIS_COUNT)
+        return 0;
+    return controller.axes[axis];
 }
 
-void IN_ControllerReset(unsigned time)
+void IN_ControllerReset(void)
 {
-    IN_ControllerButton(IN_CONTROLLER_ATTACK, false, time);
-    IN_ControllerButton(IN_CONTROLLER_JUMP, false, time);
-    IN_ControllerButton(IN_CONTROLLER_USE, false, time);
     memset(&controller, 0, sizeof(controller));
+}
+
+static float IN_ControllerMappedAxis(cvar_t *mapping)
+{
+    int value = mapping->integer;
+    bool reverse = value < 0;
+    int axis = reverse ? -value - 1 : value;
+
+    axis = Q_clip(axis, 0, IN_CONTROLLER_AXIS_COUNT - 1);
+    return controller.axes[axis] * (reverse ? -1 : 1);
 }
 
 static void IN_ControllerApplyDeadzone(float *x, float *y, float response)
@@ -541,6 +482,15 @@ static void IN_ControllerApplyDeadzone(float *x, float *y, float response)
     float scale = length / original_length;
     *x *= scale;
     *y *= scale;
+}
+
+static float IN_ControllerApplyAxisDeadzone(float value)
+{
+    float deadzone = Q_clipf(in_controller_deadzone->value, 0, 0.95f);
+
+    if (fabsf(value) <= deadzone)
+        return 0;
+    return copysignf((fabsf(value) - deadzone) / (1 - deadzone), value);
 }
 
 /*
@@ -648,10 +598,9 @@ Moves the local angle positions
 static void CL_AdjustAngles(int msec)
 {
     float speed;
-    float left_x = controller.left_x;
-    float left_y = controller.left_y;
-    float right_x = controller.right_x;
-    float right_y = controller.right_y;
+    float left_x = IN_ControllerMappedAxis(in_controller_axis_yaw);
+    float right_x = IN_ControllerMappedAxis(in_controller_axis_roll);
+    float right_y = IN_ControllerMappedAxis(in_controller_axis_pitch);
 
     if (in_speed.state & 1)
         speed = msec * cl_anglespeedkey->value * 0.001f;
@@ -672,7 +621,7 @@ static void CL_AdjustAngles(int msec)
 
     if (in_controller_enable->integer && cls.key_dest == KEY_GAME) {
         if (cl.frame.ps.pmove.pm_type == PM_DRONE) {
-            IN_ControllerApplyDeadzone(&left_x, &left_y, 1);
+            left_x = IN_ControllerApplyAxisDeadzone(left_x);
             IN_ControllerApplyDeadzone(&right_x, &right_y, 1);
             speed = msec * 0.001f;
             cl.viewangles[YAW] -= speed * IN_DroneRate(left_x,
@@ -714,8 +663,8 @@ Build the intended movement vector
 */
 static void CL_BaseMove(vec3_t move)
 {
-    float left_x = controller.left_x;
-    float left_y = controller.left_y;
+    float left_x = IN_ControllerMappedAxis(in_controller_axis_yaw);
+    float left_y = IN_ControllerMappedAxis(in_controller_axis_throttle);
 
     if (in_strafe.state & 1) {
         move[1] += cl_sidespeed->value * CL_KeyState(&in_right);
@@ -743,10 +692,7 @@ static void CL_BaseMove(vec3_t move)
         float run = cl_run->integer ? 2 : 1;
 
         if (cl.frame.ps.pmove.pm_type == PM_DRONE) {
-            IN_ControllerApplyDeadzone(&left_x, &left_y, 1);
-            move[2] += IN_DroneThrottleCurve(-left_y, cl.frame.ps.pmove.gravity,
-                                             in_controller_tiny_hover->value,
-                                             in_controller_tiny_throttle_expo->value) * 200;
+            move[2] += Q_clipf((1 - left_y) * 0.5f, 0, 1) * 200;
         } else {
             IN_ControllerApplyDeadzone(&left_x, &left_y, in_controller_response->value);
             move[0] -= left_y * cl_forwardspeed->value * scale * run;
@@ -794,6 +740,8 @@ Doesn't touch command forward/side/upmove, these are filled by CL_FinalizeCmd.
 void CL_UpdateCmd(int msec)
 {
     VectorClear(cl.localmove);
+
+    cl.pmp.drone_thrust_ratio = Q_clipf(in_controller_tiny_thrust_ratio->value, 1, 13);
 
     if (sv_paused->integer) {
         return;
@@ -935,9 +883,12 @@ void CL_RegisterInput(void)
     in_controller_yaw_rc_rate = Cvar_Get("in_controller_yaw_rc_rate", "0.55", CVAR_ARCHIVE);
     in_controller_yaw_super_rate = Cvar_Get("in_controller_yaw_super_rate", "0.74", CVAR_ARCHIVE);
     in_controller_yaw_expo = Cvar_Get("in_controller_yaw_expo", "0.10", CVAR_ARCHIVE);
-    in_controller_tiny_hover = Cvar_Get("in_controller_tiny_hover", "0.6", CVAR_ARCHIVE);
-    in_controller_tiny_throttle_expo = Cvar_Get("in_controller_tiny_throttle_expo", "0.8", CVAR_ARCHIVE);
     in_controller_tiny_autofire = Cvar_Get("in_controller_tiny_autofire", "1", CVAR_ARCHIVE | CVAR_USERINFO);
+    in_controller_tiny_thrust_ratio = Cvar_Get("in_controller_tiny_thrust_ratio", "6", CVAR_ARCHIVE | CVAR_USERINFO);
+    in_controller_axis_yaw = Cvar_Get("in_controller_axis_yaw", "0", CVAR_ARCHIVE);
+    in_controller_axis_throttle = Cvar_Get("in_controller_axis_throttle", "1", CVAR_ARCHIVE);
+    in_controller_axis_roll = Cvar_Get("in_controller_axis_roll", "2", CVAR_ARCHIVE);
+    in_controller_axis_pitch = Cvar_Get("in_controller_axis_pitch", "3", CVAR_ARCHIVE);
 }
 
 /*

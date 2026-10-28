@@ -157,14 +157,23 @@ static void Parse_Spin(menuFrameWork_t *menu, menuType_t type)
 
 static void Parse_Pairs(menuFrameWork_t *menu)
 {
+    static const cmd_option_t o_pairs[] = {
+        { "s:", "status" },
+        { "a", "axis-live" },
+        { NULL }
+    };
     menuSpinControl_t *s;
     int c, i, numItems;
     char *status = NULL;
+    bool axis_live = false;
 
-    while ((c = Cmd_ParseOptions(o_common)) != -1) {
+    while ((c = Cmd_ParseOptions(o_pairs)) != -1) {
         switch (c) {
         case 's':
             status = cmd_optarg;
+            break;
+        case 'a':
+            axis_live = true;
             break;
         default:
             return;
@@ -182,6 +191,7 @@ static void Parse_Pairs(menuFrameWork_t *menu)
     s->generic.name = UI_CopyString(Cmd_Argv(cmd_optind));
     s->generic.status = UI_CopyString(status);
     s->cvar = Cvar_WeakGet(Cmd_Argv(cmd_optind + 1));
+    s->axis_live = axis_live;
     numItems /= 2;
     s->itemnames = UI_Mallocz(sizeof(char *) * (numItems + 1));
     s->itemvalues = UI_Mallocz(sizeof(char *) * (numItems + 1));
@@ -196,14 +206,27 @@ static void Parse_Pairs(menuFrameWork_t *menu)
 
 static void Parse_Range(menuFrameWork_t *menu)
 {
+    static const cmd_option_t o_range[] = {
+        { "s:", "status" },
+        { "v", "value" },
+        { "r:", "max-rate" },
+        { NULL }
+    };
     menuSlider_t *s;
-    char *status = NULL;
+    char *status = NULL, *rate_cvar = NULL;
+    bool showvalue = false;
     int c;
 
-    while ((c = Cmd_ParseOptions(o_common)) != -1) {
+    while ((c = Cmd_ParseOptions(o_range)) != -1) {
         switch (c) {
         case 's':
             status = cmd_optarg;
+            break;
+        case 'v':
+            showvalue = true;
+            break;
+        case 'r':
+            rate_cvar = cmd_optarg;
             break;
         default:
             return;
@@ -220,6 +243,9 @@ static void Parse_Range(menuFrameWork_t *menu)
     s->generic.name = UI_CopyString(Cmd_Argv(cmd_optind));
     s->generic.status = UI_CopyString(status);
     s->cvar = Cvar_WeakGet(Cmd_Argv(cmd_optind + 1));
+    s->showvalue = showvalue;
+    if (rate_cvar)
+        s->rate_cvar = Cvar_WeakGet(rate_cvar);
     s->minvalue = Q_atof(Cmd_Argv(cmd_optind + 2));
     s->maxvalue = Q_atof(Cmd_Argv(cmd_optind + 3));
     if (Cmd_Argc() - cmd_optind > 4) {
@@ -318,6 +344,7 @@ static void Parse_Bitmap(menuFrameWork_t *menu)
 static void Parse_Bind(menuFrameWork_t *menu)
 {
     static const cmd_option_t o_bind[] = {
+        { "p", "controller" },
         { "s:", "status" },
         { "S:", "altstatus" },
         { NULL }
@@ -325,10 +352,14 @@ static void Parse_Bind(menuFrameWork_t *menu)
     menuKeybind_t *k;
     const char *status = "Press Enter to change, Backspace to clear";
     const char *altstatus = "Press the desired key, Escape to cancel";
+    bool controller = false;
     int c;
 
     while ((c = Cmd_ParseOptions(o_bind)) != -1) {
         switch (c) {
+        case 'p':
+            controller = true;
+            break;
         case 's':
             status = cmd_optarg;
             break;
@@ -352,6 +383,7 @@ static void Parse_Bind(menuFrameWork_t *menu)
     k->generic.status = UI_CopyString(status);
     k->cmd = UI_CopyString(Cmd_ArgsFrom(cmd_optind + 1));
     k->altstatus = UI_CopyString(altstatus);
+    k->controller = controller;
 
     Menu_AddItem(menu, k);
 }

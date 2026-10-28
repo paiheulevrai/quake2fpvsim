@@ -17,6 +17,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "ui.h"
+#include "client/input.h"
 #include "server/server.h"
 
 /*
@@ -252,16 +253,28 @@ static void Keybind_Draw(menuKeybind_t *k)
     R_ClearColor();
 }
 
+static int Keybind_Next(menuKeybind_t *k, int start)
+{
+    int key = start;
+
+    while ((key = Key_EnumBindings(key, k->cmd)) != -1) {
+        if ((key >= K_PAD_FIRST && key <= K_PAD_LAST) == k->controller)
+            return key;
+        key++;
+    }
+    return -1;
+}
+
 static void Keybind_Push(menuKeybind_t *k)
 {
-    int key = Key_EnumBindings(0, k->cmd);
+    int key = Keybind_Next(k, 0);
 
     k->altbinding[0] = 0;
     if (key == -1) {
         strcpy(k->binding, "???");
     } else {
         Q_strlcpy(k->binding, Key_KeynumToString(key), sizeof(k->binding));
-        key = Key_EnumBindings(key + 1, k->cmd);
+        key = Keybind_Next(k, key + 1);
         if (key != -1) {
             Q_strlcpy(k->altbinding, Key_KeynumToString(key), sizeof(k->altbinding));
         }
@@ -287,12 +300,12 @@ static void Keybind_Update(menuFrameWork_t *menu)
     }
 }
 
-static void Keybind_Remove(const char *cmd)
+static void Keybind_Remove(menuKeybind_t *k)
 {
     int key;
 
     for (key = 0; ; key++) {
-        key = Key_EnumBindings(key, cmd);
+        key = Keybind_Next(k, key);
         if (key == -1) {
             break;
         }
@@ -311,10 +324,15 @@ static bool keybind_cb(void *arg, int key)
         return false;
     }
 
+    if (key != K_ESCAPE && (key >= K_PAD_FIRST && key <= K_PAD_LAST) != k->controller) {
+        UI_StartSound(QMS_BEEP);
+        return false;
+    }
+
     // menu key is hardcoded
     if (key != K_ESCAPE) {
         if (k->altbinding[0]) {
-            Keybind_Remove(k->cmd);
+            Keybind_Remove(k);
         }
         Key_SetBinding(key, k->cmd);
     }
@@ -348,7 +366,7 @@ static menuSound_t Keybind_Key(menuKeybind_t *k, int key)
     }
 
     if (key == K_BACKSPACE || key == K_DEL) {
-        Keybind_Remove(k->cmd);
+        Keybind_Remove(k);
         Keybind_Update(menu);
         return QMS_IN;
     }
@@ -617,6 +635,7 @@ SpinControl_Draw
 */
 static void SpinControl_Draw(menuSpinControl_t *s)
 {
+    char value[16];
     const char *name;
 
     UI_DrawString(s->generic.x + LCOLUMN_OFFSET, s->generic.y,
@@ -636,6 +655,17 @@ static void SpinControl_Draw(menuSpinControl_t *s)
 
     UI_DrawString(s->generic.x + RCOLUMN_OFFSET, s->generic.y,
                   s->generic.uiFlags, name);
+
+    if (s->axis_live && s->curvalue >= 0 && s->curvalue < s->numItems) {
+        int mapping = Q_atoi(s->itemvalues[s->curvalue]);
+        int axis = mapping < 0 ? -mapping - 1 : mapping;
+        float raw = IN_ControllerAxisValue(axis);
+        if (mapping < 0)
+            raw = -raw;
+        Q_snprintf(value, sizeof(value), "%+.2f", raw);
+        UI_DrawString(s->generic.x + RCOLUMN_OFFSET + 20 * CONCHAR_WIDTH,
+                      s->generic.y, s->generic.uiFlags | UI_ALTCOLOR, value);
+    }
 }
 
 /*
@@ -1525,7 +1555,24 @@ static void Slider_Init(menuSlider_t *s)
 
     s->generic.rect.width = (RCOLUMN_OFFSET - LCOLUMN_OFFSET) +
                             len + (SLIDER_RANGE + 2) * CONCHAR_WIDTH;
+    if (s->showvalue)
+        s->generic.rect.width += 7 * CONCHAR_WIDTH;
+    if (s->rate_cvar)
+        s->generic.rect.width += 11 * CONCHAR_WIDTH;
     s->generic.rect.height = CONCHAR_HEIGHT;
+}
+
+static float Slider_CurrentValue(menuSlider_t *s, cvar_t *cvar)
+{
+    menuFrameWork_t *menu = s->generic.parent;
+    int i;
+
+    for (i = 0; i < menu->nitems; i++) {
+        menuCommon_t *item = menu->items[i];
+        if (item->type == MTYPE_SLIDER && ((menuSlider_t *)item)->cvar == cvar)
+            return ((menuSlider_t *)item)->curvalue;
+    }
+    return cvar->value;
 }
 
 static menuSound_t Slider_Click(menuSlider_t *s)
@@ -1631,6 +1678,7 @@ Slider_Draw
 */
 static void Slider_Draw(menuSlider_t *s)
 {
+    char value[32];
     int     i, flags;
     float   pos;
 
@@ -1655,6 +1703,19 @@ static void Slider_Draw(menuSlider_t *s)
     pos = Q_clipf((s->curvalue - s->minvalue) / (s->maxvalue - s->minvalue), 0, 1);
 
     UI_DrawChar(CONCHAR_WIDTH + RCOLUMN_OFFSET + s->generic.x + (SLIDER_RANGE - 1) * CONCHAR_WIDTH * pos, s->generic.y, flags | UI_LEFT, 131);
+
+    if (s->showvalue) {
+        Q_snprintf(value, sizeof(value), " %.2f", s->curvalue);
+        UI_DrawString(s->generic.x + RCOLUMN_OFFSET + (SLIDER_RANGE + 3) * CONCHAR_WIDTH,
+                      s->generic.y, flags | UI_LEFT, value);
+    }
+    if (s->rate_cvar) {
+        float rc_rate = Slider_CurrentValue(s, s->rate_cvar);
+        float max_rate = 200.0f * rc_rate / (1.0f - Q_clipf(s->curvalue, 0, 0.95f));
+        Q_snprintf(value, sizeof(value), "%4.0f deg/s", max_rate);
+        UI_DrawString(s->generic.x + RCOLUMN_OFFSET + (SLIDER_RANGE + 10) * CONCHAR_WIDTH,
+                      s->generic.y, flags | UI_LEFT | UI_ALTCOLOR, value);
+    }
 }
 
 /*

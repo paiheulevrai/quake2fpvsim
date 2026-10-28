@@ -39,6 +39,7 @@ static struct {
     SDL_Window      *window;
     SDL_GLContext   *context;
     SDL_GameController *controller;
+    SDL_Joystick    *joystick;
     vidFlags_t      flags;
 
     int             width;
@@ -250,6 +251,8 @@ static void shutdown(void)
 {
     if (sdl.controller)
         SDL_GameControllerClose(sdl.controller);
+    if (sdl.joystick)
+        SDL_JoystickClose(sdl.joystick);
     if (sdl.controller_initialized)
         SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 
@@ -265,27 +268,45 @@ static void shutdown(void)
 
 static void controller_open(int device_index)
 {
-    if (sdl.controller || !SDL_IsGameController(device_index))
+    if (sdl.controller || sdl.joystick)
         return;
 
-    sdl.controller = SDL_GameControllerOpen(device_index);
-    if (!sdl.controller) {
-        Com_EPrintf("Couldn't open SDL controller: %s\n", SDL_GetError());
-        return;
+    if (SDL_IsGameController(device_index)) {
+        sdl.controller = SDL_GameControllerOpen(device_index);
+        if (sdl.controller) {
+            Com_Printf("SDL controller initialized: %s\n",
+                       SDL_GameControllerName(sdl.controller));
+            return;
+        }
     }
 
-    Com_Printf("SDL controller initialized: %s\n",
-               SDL_GameControllerName(sdl.controller));
+    sdl.joystick = SDL_JoystickOpen(device_index);
+    if (sdl.joystick)
+        Com_Printf("SDL joystick initialized: %s (%d axes, %d buttons)\n",
+                   SDL_JoystickName(sdl.joystick), SDL_JoystickNumAxes(sdl.joystick),
+                   SDL_JoystickNumButtons(sdl.joystick));
+    else
+        Com_EPrintf("Couldn't open SDL controller: %s\n", SDL_GetError());
 }
 
 static void controller_close(unsigned time)
 {
-    if (!sdl.controller)
+    int key;
+
+    if (!sdl.controller && !sdl.joystick)
         return;
 
-    IN_ControllerReset(time);
-    SDL_GameControllerClose(sdl.controller);
+    for (key = K_PAD_FIRST; key <= K_PAD_LAST; key++) {
+        if (Key_IsDown(key))
+            Key_Event(key, false, time);
+    }
+    IN_ControllerReset();
+    if (sdl.controller)
+        SDL_GameControllerClose(sdl.controller);
+    if (sdl.joystick)
+        SDL_JoystickClose(sdl.joystick);
     sdl.controller = NULL;
+    sdl.joystick = NULL;
     sdl.left_trigger = false;
     sdl.right_trigger = false;
 }
@@ -301,6 +322,7 @@ static void controller_init(void)
 
     sdl.controller_initialized = true;
     SDL_GameControllerEventState(SDL_ENABLE);
+    SDL_JoystickEventState(SDL_ENABLE);
     for (i = 0; i < SDL_NumJoysticks(); i++)
         controller_open(i);
 }
@@ -534,50 +556,80 @@ static void mouse_wheel_event(SDL_MouseWheelEvent *event)
 
 static bool controller_is_current(SDL_JoystickID which)
 {
-    return sdl.controller && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl.controller)) == which;
+    SDL_Joystick *joystick = sdl.controller ? SDL_GameControllerGetJoystick(sdl.controller) : sdl.joystick;
+    return joystick && SDL_JoystickInstanceID(joystick) == which;
+}
+
+static void joystick_button_event(SDL_JoyButtonEvent *event)
+{
+    static const int keys[] = {
+        K_PAD_A, K_PAD_B, K_PAD_X, K_PAD_Y, K_PAD_LB, K_PAD_RB, K_PAD_BACK
+    };
+
+    if (sdl.controller || !controller_is_current(event->which))
+        return;
+    if (event->button < q_countof(keys))
+        Key_Event(keys[event->button], event->state, event->timestamp);
+    else if (event->button == 7) {
+        if (event->state) {
+            Key_Event(K_ESCAPE, true, event->timestamp);
+            Key_Event(K_ESCAPE, false, event->timestamp);
+        }
+    } else if (event->button == 8 || event->button == 9) {
+        Key_Event(event->button == 8 ? K_PAD_L3 : K_PAD_R3,
+                  event->state, event->timestamp);
+    }
+}
+
+static void joystick_axis_event(SDL_JoyAxisEvent *event)
+{
+    float value;
+
+    if (sdl.controller || !controller_is_current(event->which))
+        return;
+    value = event->value < 0 ? (float)event->value / 32768.0f : (float)event->value / 32767.0f;
+    if (event->axis < IN_CONTROLLER_AXIS_COUNT) {
+        IN_ControllerAxis((in_controller_axis_t)event->axis, value);
+    }
 }
 
 static void controller_button_event(SDL_ControllerButtonEvent *event)
 {
     unsigned key = 0;
+    unsigned menu_key = 0;
 
     if (!controller_is_current(event->which))
         return;
 
-    if (Key_GetDest() & KEY_MENU) {
-        switch (event->button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:    key = K_UPARROW; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  key = K_DOWNARROW; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  key = K_LEFTARROW; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: key = K_RIGHTARROW; break;
-        case SDL_CONTROLLER_BUTTON_A:          key = K_ENTER; break;
-        case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_START:      key = K_ESCAPE; break;
-        }
-        if (key)
-            Key_Event(key, event->state, event->timestamp);
-        return;
-    }
-
     switch (event->button) {
-    case SDL_CONTROLLER_BUTTON_A:
-        IN_ControllerButton(IN_CONTROLLER_USE, event->state, event->timestamp);
-        break;
-    case SDL_CONTROLLER_BUTTON_B:
-        IN_ControllerButton(IN_CONTROLLER_INVENTORY, event->state, event->timestamp);
-        break;
-    case SDL_CONTROLLER_BUTTON_X:
-        IN_ControllerButton(IN_CONTROLLER_WEAPON_NEXT, event->state, event->timestamp);
-        break;
-    case SDL_CONTROLLER_BUTTON_Y:
-        IN_ControllerButton(IN_CONTROLLER_WEAPON_PREV, event->state, event->timestamp);
-        break;
+    case SDL_CONTROLLER_BUTTON_A:             key = K_PAD_A;     menu_key = K_ENTER;      break;
+    case SDL_CONTROLLER_BUTTON_B:             key = K_PAD_B;     menu_key = K_ESCAPE;     break;
+    case SDL_CONTROLLER_BUTTON_X:             key = K_PAD_X;     break;
+    case SDL_CONTROLLER_BUTTON_Y:             key = K_PAD_Y;     break;
+    case SDL_CONTROLLER_BUTTON_BACK:          key = K_PAD_BACK;  break;
+    case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  key = K_PAD_LB;    break;
+    case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: key = K_PAD_RB;    break;
+    case SDL_CONTROLLER_BUTTON_LEFTSTICK:     key = K_PAD_L3;    break;
+    case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    key = K_PAD_R3;    break;
+    case SDL_CONTROLLER_BUTTON_DPAD_UP:       key = K_PAD_UP;    menu_key = K_UPARROW;    break;
+    case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     key = K_PAD_DOWN;  menu_key = K_DOWNARROW;  break;
+    case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     key = K_PAD_LEFT;  menu_key = K_LEFTARROW;  break;
+    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    key = K_PAD_RIGHT; menu_key = K_RIGHTARROW; break;
     case SDL_CONTROLLER_BUTTON_START:
         if (event->state) {
             Key_Event(K_ESCAPE, true, event->timestamp);
             Key_Event(K_ESCAPE, false, event->timestamp);
         }
-        break;
+        return;
+    }
+
+    if (Key_GetDest() & KEY_MENU && !Key_IsWaiting()) {
+        if (!event->state && key && Key_IsDown(key))
+            Key_Event(key, false, event->timestamp);
+        if (menu_key)
+            Key_Event(menu_key, event->state, event->timestamp);
+    } else if (key) {
+        Key_Event(key, event->state, event->timestamp);
     }
 }
 
@@ -607,14 +659,14 @@ static void controller_axis_event(SDL_ControllerAxisEvent *event)
         down = value > 0.5f;
         if (down != sdl.left_trigger) {
             sdl.left_trigger = down;
-            IN_ControllerButton(IN_CONTROLLER_JUMP, down, event->timestamp);
+            Key_Event(K_PAD_LT, down, event->timestamp);
         }
         break;
     case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
         down = value > 0.5f;
         if (down != sdl.right_trigger) {
             sdl.right_trigger = down;
-            IN_ControllerButton(IN_CONTROLLER_ATTACK, down, event->timestamp);
+            Key_Event(K_PAD_RT, down, event->timestamp);
         }
         break;
     }
@@ -661,6 +713,20 @@ static void pump_events(void)
             break;
         case SDL_CONTROLLERAXISMOTION:
             controller_axis_event(&event.caxis);
+            break;
+        case SDL_JOYDEVICEADDED:
+            controller_open(event.jdevice.which);
+            break;
+        case SDL_JOYDEVICEREMOVED:
+            if (controller_is_current(event.jdevice.which))
+                controller_close(event.jdevice.timestamp);
+            break;
+        case SDL_JOYBUTTONDOWN:
+        case SDL_JOYBUTTONUP:
+            joystick_button_event(&event.jbutton);
+            break;
+        case SDL_JOYAXISMOTION:
+            joystick_axis_event(&event.jaxis);
             break;
         }
     }

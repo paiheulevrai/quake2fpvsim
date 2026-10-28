@@ -404,6 +404,80 @@ static const paintfunc_t paintfuncs[] = {
     PaintStereoFull16,
 };
 
+/*
+ * Continuous FPV motor synthesis based on the physical model used by libfpv:
+ * blade-pass harmonics, pole-pair whine, RPM-following air noise and a short
+ * parameter glide. The implementation here is native C for Q2PRO's mixer.
+ * Model reference: https://github.com/hammerill/libfpv (GPL-3.0-or-later).
+ */
+static struct {
+    double phase[4];
+    double whine[4];
+    float noise_lp[4];
+    float throttle;
+    float gain;
+    uint32_t seed;
+} fpv_motor = { .seed = 0x12345678u };
+
+static void PaintFPVMotor(samplepair_t *samples, int count)
+{
+    static const float detune[4] = { 0.982f, 0.994f, 1.007f, 1.019f };
+    static const float pan[4] = { -0.35f, 0.35f, -0.22f, 0.22f };
+    bool active = cls.state == ca_active &&
+                  cl.frame.ps.pmove.pm_type == PM_DRONE &&
+                  !sv_paused->integer;
+    float target = active ? Q_clipf(cl.localmove[2] / 200.0f, 0, 1) : 0;
+    float target_gain = active ? 1 : 0;
+    float dt = 1.0f / dma.speed;
+    float glide = 1.0f - expf(-dt / 0.015f);
+
+    for (int frame = 0; frame < count; frame++) {
+        float left = 0, right = 0;
+
+        fpv_motor.throttle += (target - fpv_motor.throttle) * glide;
+        fpv_motor.gain += (target_gain - fpv_motor.gain) * glide;
+
+        for (int motor = 0; motor < 4; motor++) {
+            float load = fpv_motor.throttle;
+            float rpm = (4500.0f + load * 25500.0f) * detune[motor];
+            float spin = rpm / 30000.0f;
+            float rev = rpm / 60.0f;
+            float blade_pass = rev * 3.0f;
+            float buzz = 0;
+
+            fpv_motor.phase[motor] += blade_pass * dt;
+            fpv_motor.phase[motor] -= floor(fpv_motor.phase[motor]);
+            fpv_motor.whine[motor] += rev * 7.0f * dt;
+            fpv_motor.whine[motor] -= floor(fpv_motor.whine[motor]);
+
+            for (int harmonic = 1; harmonic <= 6; harmonic++) {
+                if (blade_pass * harmonic >= dma.speed * 0.45f)
+                    break;
+                buzz += sinf(2.0f * M_PIf * fpv_motor.phase[motor] * harmonic) /
+                        harmonic;
+            }
+
+            float whine = rev * 7.0f < dma.speed * 0.45f ?
+                sinf(2.0f * M_PIf * fpv_motor.whine[motor]) : 0;
+            fpv_motor.seed = fpv_motor.seed * 1664525u + 1013904223u;
+            float white = (float)(int32_t)fpv_motor.seed / 2147483648.0f;
+            float cutoff = min(0.9f, 2.0f * M_PIf * blade_pass * 2.0f * dt);
+            fpv_motor.noise_lp[motor] +=
+                (white - fpv_motor.noise_lp[motor]) * cutoff;
+
+            float amplitude = spin * spin * (0.35f + 0.65f * load);
+            float value = (buzz * 0.55f + whine * 0.08f * (0.3f + load) +
+                           fpv_motor.noise_lp[motor] * 0.6f) * amplitude;
+            left += value * (0.5f - 0.35f * pan[motor]);
+            right += value * (0.5f + 0.35f * pan[motor]);
+        }
+
+        float volume = fpv_motor.gain * snd_vol * 42376.0f;
+        samples[frame].left += tanhf(left * 0.35f) * volume;
+        samples[frame].right += tanhf(right * 0.35f) * volume;
+    }
+}
+
 static void PaintChannels(int endtime)
 {
     samplepair_t paintbuffer[PAINTBUFFER_SIZE];
@@ -471,6 +545,8 @@ static void PaintChannels(int endtime)
                 }
             }
         }
+
+        PaintFPVMotor(paintbuffer, end - s_paintedtime);
 
         if (underwater)
             underwater_filter(paintbuffer, end - s_paintedtime);

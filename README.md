@@ -4,8 +4,8 @@ Fly through Quake II as a small FPV drone. This fork of [Q2PRO](https://github.c
 
 ## What is in the FPV mode?
 
-- **Drone flight:** throttle, yaw, pitch and roll; a small collision hull; inertia and wall bounces. Acro mode is enabled by default, with an optional self-leveling angle mode.
-- **Betaflight-style rates:** separate RC Rate, S Rate and RC Expo for roll, pitch and yaw. Hover-stick position and throttle softness are adjustable. Throttle uses the full stick range.
+- **Drone flight:** throttle, yaw, pitch and roll; adjustable thrust-to-weight ratio; a small collision hull; inertia and wall bounces. Acro mode is enabled by default, with an optional self-leveling angle mode.
+- **Betaflight-style rates:** separate RC Rate, Super Rate and RC Expo for roll, pitch and yaw. Throttle maps the full stick range directly from 0% to 100%.
 - **FPV camera and OSD:** fixed 0° camera tilt, an artificial horizon that moves with pitch and roll, working degree ladders on both sides, heading, speed and altitude above the surface below (in game units).
 - **Target-aware autofire:** enabled by default. The gun fires when the crosshair points at a living enemy or destructible object. RT still fires manually at any time.
 - **Medium difficulty:** Tinywhoop starts the single-player game at `skill 1`.
@@ -26,6 +26,8 @@ Fly through Quake II as a small FPV drone. This fork of [Q2PRO](https://github.c
 | Start | Menu |
 
 Open **Options → Input Setup → Controller Setup → Tinywhoop Setup** to tune flight rates, hover point, acro mode, autofire and the OSD. The controller must appear to SDL as a GameController. DJI controllers may work if SDL recognizes their mapping; Xbox controllers are the tested option.
+
+In standard Quake II mode, the controller keeps its FPS controls, with R3 for crouch. Use **Options → Input Setup → Controller Setup → Button Bindings** to change controller buttons without changing keyboard bindings. Stick aim speed, move speed, deadzone and response have fine adjustments in Controller Setup.
 
 ## Play on Windows
 

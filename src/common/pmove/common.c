@@ -30,6 +30,7 @@ void PmoveInit(pmoveParams_t *pmp)
     pmp->friction = 6;
     pmp->waterfriction = 1;
     pmp->flyfriction = 9;
+    pmp->drone_thrust_ratio = 6;
     pmp->time_shift = 3;
     pmp->coord_bits = 16;
 }

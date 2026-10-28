@@ -57,13 +57,13 @@ int main(void)
     PmoveInit(&params);
     move = new_drone();
     PmoveOld(&move, &params);
-    assert(move.s.velocity[2] < 0); // centered throttle lets the drone fall
+    assert(move.s.velocity[2] < 0); // zero throttle lets the drone fall
     assert(move.viewheight == 0 && move.mins[0] == -8 && move.maxs[0] == 8);
 
     move = new_drone();
-    move.cmd.upmove = 80; // 40% throttle is still below hover power
+    move.cmd.upmove = 80; // 40% throttle climbs at a 6:1 thrust ratio
     PmoveOld(&move, &params);
-    assert(move.s.velocity[2] < 0);
+    assert(move.s.velocity[2] > 0);
 
     move = new_drone();
     move.cmd.upmove = 200;
@@ -74,7 +74,7 @@ int main(void)
     move.cmd.upmove = 200;
     move.cmd.angles[PITCH] = ANGLE2SHORT(60);
     PmoveOld(&move, &params);
-    assert(move.s.velocity[0] > 0 && move.s.velocity[2] < 0);
+    assert(move.s.velocity[0] > 0 && move.s.velocity[2] > 0);
 
     move = new_drone();
     move.cmd.angles[PITCH] = ANGLE2SHORT(135);

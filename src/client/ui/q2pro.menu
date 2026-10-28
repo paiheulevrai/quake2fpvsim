@@ -36,7 +36,7 @@ begin <menuname>
    background <color|image>
    plaque <plaque> [logo]
 
-   range <name> <cvar> <min> <max> [step]
+   range [--value] [--max-rate <RC-rate-cvar>] <name> <cvar> <min> <max> [step]
 
    pairs <name> <cvar> <string1> <value1> [...]
    values <name> <cvar> <string1> [...]
@@ -325,12 +325,53 @@ end
 
 begin controller
     title "Controller Setup"
-    range "aim speed" in_controller_sensitivity 1 720 10
-    range "move speed" in_controller_move_scale 0 1 0.05
-    range "stick deadzone" in_controller_deadzone 0 0.95 0.05
-    range "stick response" in_controller_response 1 3 0.25
+    range "aim speed" in_controller_sensitivity 1 720 1
+    range "move speed" in_controller_move_scale 0 1 0.01
+    range "stick deadzone" in_controller_deadzone 0 0.95 0.01
+    range "stick response" in_controller_response 1 3 0.05
     toggle "invert vertical aim" in_controller_invert_y
+    action "stick mapping" pushmenu controllersticks
+    action "button bindings" pushmenu controllerbuttons
     action "tinywhoop setup" pushmenu tinycontroller
+end
+
+begin controllersticks
+    title "Stick Mapping"
+    pairs --axis-live --status "Move the assigned stick; choose reversed if its direction is wrong" \
+        "Yaw" in_controller_axis_yaw \
+        "Axis 1" 0 "Axis 2" 1 "Axis 3" 2 "Axis 4" 3 \
+        "Axis 5" 4 "Axis 6" 5 "Axis 7" 6 "Axis 8" 7 \
+        "Axis 1 reversed" -1 "Axis 2 reversed" -2 "Axis 3 reversed" -3 "Axis 4 reversed" -4 \
+        "Axis 5 reversed" -5 "Axis 6 reversed" -6 "Axis 7 reversed" -7 "Axis 8 reversed" -8
+    pairs --axis-live --status "Move the assigned stick; choose reversed if its direction is wrong" \
+        "Throttle" in_controller_axis_throttle \
+        "Axis 1" 0 "Axis 2" 1 "Axis 3" 2 "Axis 4" 3 \
+        "Axis 5" 4 "Axis 6" 5 "Axis 7" 6 "Axis 8" 7 \
+        "Axis 1 reversed" -1 "Axis 2 reversed" -2 "Axis 3 reversed" -3 "Axis 4 reversed" -4 \
+        "Axis 5 reversed" -5 "Axis 6 reversed" -6 "Axis 7 reversed" -7 "Axis 8 reversed" -8
+    pairs --axis-live --status "Move the assigned stick; choose reversed if its direction is wrong" \
+        "Roll" in_controller_axis_roll \
+        "Axis 1" 0 "Axis 2" 1 "Axis 3" 2 "Axis 4" 3 \
+        "Axis 5" 4 "Axis 6" 5 "Axis 7" 6 "Axis 8" 7 \
+        "Axis 1 reversed" -1 "Axis 2 reversed" -2 "Axis 3 reversed" -3 "Axis 4 reversed" -4 \
+        "Axis 5 reversed" -5 "Axis 6 reversed" -6 "Axis 7 reversed" -7 "Axis 8 reversed" -8
+    pairs --axis-live --status "Move the assigned stick; choose reversed if its direction is wrong" \
+        "Pitch" in_controller_axis_pitch \
+        "Axis 1" 0 "Axis 2" 1 "Axis 3" 2 "Axis 4" 3 \
+        "Axis 5" 4 "Axis 6" 5 "Axis 7" 6 "Axis 8" 7 \
+        "Axis 1 reversed" -1 "Axis 2 reversed" -2 "Axis 3 reversed" -3 "Axis 4 reversed" -4 \
+        "Axis 5 reversed" -5 "Axis 6 reversed" -6 "Axis 7 reversed" -7 "Axis 8 reversed" -8
+end
+
+begin controllerbuttons
+    title "Controller Buttons"
+    bind --controller "attack" +attack
+    bind --controller "up / jump" +moveup
+    bind --controller "down / crouch" +movedown
+    bind --controller "use item" +use
+    bind --controller "inventory" inven
+    bind --controller "next weapon" weapnext
+    bind --controller "previous weapon" weapprev
 end
 
 begin tinycontroller
@@ -338,17 +379,22 @@ begin tinycontroller
     toggle "acro flight" in_controller_acro
     toggle "autofire" in_controller_tiny_autofire
     toggle "FPV OSD" scr_fpv_osd
-    range "roll RC rate" in_controller_roll_rc_rate 0.1 2 0.01
-    range "roll S rate" in_controller_roll_super_rate 0 0.95 0.01
-    range "roll RC expo" in_controller_roll_expo 0 1 0.01
-    range "pitch RC rate" in_controller_pitch_rc_rate 0.1 2 0.01
-    range "pitch S rate" in_controller_pitch_super_rate 0 0.95 0.01
-    range "pitch RC expo" in_controller_pitch_expo 0 1 0.01
-    range "yaw RC rate" in_controller_yaw_rc_rate 0.1 2 0.01
-    range "yaw S rate" in_controller_yaw_super_rate 0 0.95 0.01
-    range "yaw RC expo" in_controller_yaw_expo 0 1 0.01
-    range "hover stick" in_controller_tiny_hover 0.3 0.8 0.05
-    range "throttle softness" in_controller_tiny_throttle_expo 0 1 0.05
+    range --value --status "Total thrust divided by drone weight" "thrust / weight ratio" in_controller_tiny_thrust_ratio 1 13 0.1
+    action "stick mapping" pushmenu controllersticks
+    action "Betaflight rates" pushmenu controllerrates
+end
+
+begin controllerrates
+    title "Betaflight Rates"
+    range --value --status "Betaflight RC Rate" "Roll RC Rate" in_controller_roll_rc_rate 0.1 2 0.01
+    range --value --max-rate in_controller_roll_rc_rate --status "Betaflight Super Rate and maximum angular velocity" "Roll Super Rate" in_controller_roll_super_rate 0 0.95 0.01
+    range --value --status "Betaflight RC Expo" "Roll RC Expo" in_controller_roll_expo 0 1 0.01
+    range --value --status "Betaflight RC Rate" "Pitch RC Rate" in_controller_pitch_rc_rate 0.1 2 0.01
+    range --value --max-rate in_controller_pitch_rc_rate --status "Betaflight Super Rate and maximum angular velocity" "Pitch Super Rate" in_controller_pitch_super_rate 0 0.95 0.01
+    range --value --status "Betaflight RC Expo" "Pitch RC Expo" in_controller_pitch_expo 0 1 0.01
+    range --value --status "Betaflight RC Rate" "Yaw RC Rate" in_controller_yaw_rc_rate 0.1 2 0.01
+    range --value --max-rate in_controller_yaw_rc_rate --status "Betaflight Super Rate and maximum angular velocity" "Yaw Super Rate" in_controller_yaw_super_rate 0 0.95 0.01
+    range --value --status "Betaflight RC Expo" "Yaw RC Expo" in_controller_yaw_expo 0 1 0.01
 end
 
 begin keys

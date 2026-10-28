@@ -112,6 +112,25 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define K_MWHEELLEFT    213
 #define K_MOUSELAST     213
 
+// SDL controller buttons and triggers are bindable keys.
+#define K_PAD_FIRST     220
+#define K_PAD_A         220
+#define K_PAD_B         221
+#define K_PAD_X         222
+#define K_PAD_Y         223
+#define K_PAD_BACK      224
+#define K_PAD_LB        225
+#define K_PAD_RB        226
+#define K_PAD_L3        227
+#define K_PAD_R3        228
+#define K_PAD_UP        229
+#define K_PAD_DOWN      230
+#define K_PAD_LEFT      231
+#define K_PAD_RIGHT     232
+#define K_PAD_LT        233
+#define K_PAD_RT        234
+#define K_PAD_LAST      234
+
 typedef enum {
     KEY_GAME    = 0,
     KEY_CONSOLE = BIT(0),
@@ -125,6 +144,7 @@ void    Key_Init(void);
 
 void    Key_Event(unsigned key, bool down, unsigned time);
 void    Key_Event2(unsigned key, bool down, unsigned time);
+bool    Key_IsWaiting(void);
 void    Key_CharEvent(int key);
 
 bool        Key_GetOverstrikeMode(void);

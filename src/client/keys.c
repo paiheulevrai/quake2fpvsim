@@ -131,6 +131,22 @@ static const keyname_t keynames[] = {
     K(MWHEELRIGHT),
     K(MWHEELLEFT),
 
+    K(PAD_A),
+    K(PAD_B),
+    K(PAD_X),
+    K(PAD_Y),
+    K(PAD_BACK),
+    K(PAD_LB),
+    K(PAD_RB),
+    K(PAD_L3),
+    K(PAD_R3),
+    K(PAD_UP),
+    K(PAD_DOWN),
+    K(PAD_LEFT),
+    K(PAD_RIGHT),
+    K(PAD_LT),
+    K(PAD_RT),
+
     {"SEMICOLON", ';'}, // because a raw semicolon seperates commands
 
     {NULL, 0}
@@ -459,6 +475,10 @@ void Key_WriteBindings(qhandle_t f)
 {
     int     i;
 
+    // Preserve cleared controller defaults when config.cfg is loaded again.
+    for (i = K_PAD_FIRST; i <= K_PAD_LAST; i++)
+        FS_FPrintf(f, "unbind %s\n", Key_KeynumToString(i));
+
     for (i = 0; i < 256; i++) {
         if (keybindings[i] && keybindings[i][0]) {
             FS_FPrintf(f, "bind %s \"%s\"\n", Key_KeynumToString(i),
@@ -561,6 +581,9 @@ void Key_Init(void)
     K(MWHEELUP);
     K(MWHEELDOWN);
 
+    for (i = K_PAD_FIRST; i <= K_PAD_LAST; i++)
+        Q_SetBit(consolekeys, i);
+
 #undef K
 
 //
@@ -597,6 +620,19 @@ void Key_Init(void)
 // register our functions
 //
     Cmd_Register(c_keys);
+
+    Key_SetBinding(K_PAD_RT, "+attack");
+    Key_SetBinding(K_PAD_LT, "+moveup");
+    Key_SetBinding(K_PAD_R3, "+movedown");
+    Key_SetBinding(K_PAD_A, "+use");
+    Key_SetBinding(K_PAD_B, "inven");
+    Key_SetBinding(K_PAD_X, "weapnext");
+    Key_SetBinding(K_PAD_Y, "weapprev");
+}
+
+bool Key_IsWaiting(void)
+{
+    return key_wait_cb != NULL;
 }
 
 /*

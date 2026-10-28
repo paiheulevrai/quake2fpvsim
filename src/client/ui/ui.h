@@ -165,6 +165,8 @@ typedef struct {
     float maxvalue;
     float curvalue;
     float step;
+    bool showvalue;
+    cvar_t *rate_cvar;
 } menuSlider_t;
 
 #define MAX_COLUMNS     8
@@ -224,6 +226,7 @@ typedef struct {
 
     int         mask;
     bool        negate;
+    bool        axis_live;
 } menuSpinControl_t;
 
 typedef struct {
@@ -252,6 +255,7 @@ typedef struct {
     char            altbinding[32];
     char            *cmd;
     char            *altstatus;
+    bool            controller;
 } menuKeybind_t;
 
 #define MAX_PLAYERMODELS 1024
