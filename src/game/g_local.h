@@ -507,6 +507,7 @@ extern  cvar_t  *coop;
 extern  cvar_t  *dmflags;
 extern  cvar_t  *skill;
 extern  cvar_t  *fpv_mode;
+extern  cvar_t  *sv_aim;
 extern  cvar_t  *fraglimit;
 extern  cvar_t  *timelimit;
 extern  cvar_t  *password;
@@ -769,6 +770,7 @@ void DeathmatchScoreboardMessage(edict_t *client, edict_t *killer);
 // g_pweapon.c
 //
 void PlayerNoise(edict_t *who, vec3_t where, int type);
+void P_Aim(edict_t *ent, vec3_t forward);
 
 //
 // m_move.c

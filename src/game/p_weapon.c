@@ -37,6 +37,58 @@ static void P_ProjectSource(gclient_t *client, vec3_t point, vec3_t distance, ve
     G_ProjectSource(point, _distance, forward, right, result);
 }
 
+/* Quake's original vertical auto-aim. sv_aim is the minimum direction cosine. */
+void P_Aim(edict_t *ent, vec3_t forward)
+{
+    edict_t *check, *bestent = NULL;
+    vec3_t  start, dir, end;
+    trace_t tr;
+    float   dist, bestdist;
+    int     i;
+
+    if (sv_aim->value > 1)
+        return;
+
+    VectorCopy(ent->s.origin, start);
+    start[2] += ent->viewheight;
+
+    VectorMA(start, 2048, forward, end);
+    tr = gi.trace(start, NULL, NULL, end, ent, MASK_SHOT);
+    if (tr.ent && tr.ent->takedamage == DAMAGE_AIM && !OnSameTeam(ent, tr.ent))
+        return;
+
+    bestdist = sv_aim->value;
+    for (i = 1; i < globals.num_edicts; i++) {
+        check = &g_edicts[i];
+        if (!check->inuse || check == ent || check->takedamage != DAMAGE_AIM || OnSameTeam(ent, check))
+            continue;
+
+        VectorAvg(check->mins, check->maxs, dir);
+        VectorAdd(check->s.origin, dir, end);
+        VectorSubtract(end, start, dir);
+        VectorNormalize(dir);
+        dist = DotProduct(dir, forward);
+        if (dist < bestdist)
+            continue;
+
+        tr = gi.trace(start, NULL, NULL, end, ent, MASK_SHOT);
+        if (tr.ent == check) {
+            bestdist = dist;
+            bestent = check;
+        }
+    }
+
+    if (!bestent)
+        return;
+
+    VectorSubtract(bestent->s.origin, ent->s.origin, dir);
+    dist = DotProduct(dir, forward);
+    VectorScale(forward, dist, end);
+    end[2] = dir[2];
+    VectorNormalize(end);
+    VectorCopy(end, forward);
+}
+
 /*
 ===============
 PlayerNoise
@@ -683,6 +735,7 @@ void Weapon_RocketLauncher_Fire(edict_t *ent)
 
     VectorSet(offset, 8, 8, ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
     fire_rocket(ent, start, forward, damage, 650, damage_radius, radius_damage);
 
     // send muzzle flash
@@ -727,6 +780,7 @@ void Blaster_Fire(edict_t *ent, const vec3_t g_offset, int damage, bool hyper, i
     VectorSet(offset, 24, 8, ent->viewheight - 8);
     VectorAdd(offset, g_offset, offset);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
 
     VectorScale(forward, -2, ent->client->kick_origin);
     ent->client->kick_angles[0] = -1;
@@ -894,6 +948,7 @@ void Machinegun_Fire(edict_t *ent)
     AngleVectors(angles, forward, right, NULL);
     VectorSet(offset, 0, 8, ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
     fire_bullet(ent, start, forward, damage, kick, DEFAULT_BULLET_HSPREAD, DEFAULT_BULLET_VSPREAD, MOD_MACHINEGUN);
 
     gi.WriteByte(svc_muzzleflash);
@@ -1009,6 +1064,7 @@ void Chaingun_Fire(edict_t *ent)
         u = crandom() * 4;
         VectorSet(offset, 0, r, u + ent->viewheight - 8);
         P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+        P_Aim(ent, forward);
 
         fire_bullet(ent, start, forward, damage, kick, DEFAULT_BULLET_HSPREAD, DEFAULT_BULLET_VSPREAD, MOD_CHAINGUN);
     }
@@ -1061,6 +1117,7 @@ void weapon_shotgun_fire(edict_t *ent)
 
     VectorSet(offset, 0, 8,  ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
 
     if (is_quad) {
         damage *= 4;
@@ -1109,18 +1166,18 @@ void weapon_supershotgun_fire(edict_t *ent)
 
     VectorSet(offset, 0, 8,  ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
 
     if (is_quad) {
         damage *= 4;
         kick *= 4;
     }
 
-    v[PITCH] = ent->client->v_angle[PITCH];
-    v[YAW]   = ent->client->v_angle[YAW] - 5;
-    v[ROLL]  = ent->client->v_angle[ROLL];
+    vectoangles(forward, v);
+    v[YAW] -= 5;
     AngleVectors(v, forward, NULL, NULL);
     fire_shotgun(ent, start, forward, damage, kick, DEFAULT_SHOTGUN_HSPREAD, DEFAULT_SHOTGUN_VSPREAD, DEFAULT_SSHOTGUN_COUNT / 2, MOD_SSHOTGUN);
-    v[YAW]   = ent->client->v_angle[YAW] + 5;
+    v[YAW] += 10;
     AngleVectors(v, forward, NULL, NULL);
     fire_shotgun(ent, start, forward, damage, kick, DEFAULT_SHOTGUN_HSPREAD, DEFAULT_SHOTGUN_VSPREAD, DEFAULT_SSHOTGUN_COUNT / 2, MOD_SSHOTGUN);
 
@@ -1182,6 +1239,7 @@ void weapon_railgun_fire(edict_t *ent)
 
     VectorSet(offset, 0, 7,  ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
     fire_rail(ent, start, forward, damage, kick);
 
     // send muzzle flash
@@ -1259,6 +1317,7 @@ void weapon_bfg_fire(edict_t *ent)
 
     VectorSet(offset, 8, 8, ent->viewheight - 8);
     P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+    P_Aim(ent, forward);
     fire_bfg(ent, start, forward, damage, 400, damage_radius);
 
     ent->client->ps.gunframe++;

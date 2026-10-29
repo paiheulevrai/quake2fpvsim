@@ -1648,6 +1648,7 @@ void ClientThink(edict_t *ent, usercmd_t *ucmd)
         VectorCopy(ent->s.origin, aim_start);
         aim_start[2] += ent->viewheight;
         AngleVectors(client->v_angle, aim_forward, NULL, NULL);
+        P_Aim(ent, aim_forward);
         VectorMA(aim_start, 8192, aim_forward, aim_end);
         aim_trace = gi.trace(aim_start, NULL, NULL, aim_end, ent, MASK_SHOT);
         if (aim_trace.ent && aim_trace.ent->inuse &&

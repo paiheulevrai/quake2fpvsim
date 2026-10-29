@@ -34,6 +34,7 @@ cvar_t  *coop;
 cvar_t  *dmflags;
 cvar_t  *skill;
 cvar_t  *fpv_mode;
+cvar_t  *sv_aim;
 cvar_t  *fraglimit;
 cvar_t  *timelimit;
 cvar_t  *password;
@@ -141,6 +142,7 @@ void InitGame(void)
     coop = gi.cvar("coop", "0", CVAR_LATCH);
     skill = gi.cvar("skill", "1", CVAR_LATCH);
     fpv_mode = gi.cvar("fpv_mode", "0", CVAR_LATCH | CVAR_ARCHIVE);
+    sv_aim = gi.cvar("sv_aim", "0.93", CVAR_ARCHIVE);
     maxentities = gi.cvar("maxentities", "1024", CVAR_LATCH);
 
     // change anytime vars

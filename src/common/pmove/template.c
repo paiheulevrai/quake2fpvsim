@@ -1016,6 +1016,31 @@ static void PM_ClampAngles(void)
     AngleVectors(pm->viewangles, pml.forward, pml.right, pml.up);
 }
 
+static bool PM_DroneUnstuck(void)
+{
+    static const vec3_t directions[] = {
+        { 1, 0, 0 }, { -1, 0, 0 },
+        { 0, 1, 0 }, { 0, -1, 0 },
+        { 0, 0, 1 }, { 0, 0, -1 }
+    };
+    vec3_t origin;
+    trace_t trace;
+    int distance, i;
+
+    for (distance = 1; distance <= 32; distance++) {
+        for (i = 0; i < q_countof(directions); i++) {
+            VectorMA(pml.origin, distance, directions[i], origin);
+            trace = PMOVE_TRACE(origin, pm->mins, pm->maxs, origin);
+            if (!trace.allsolid) {
+                VectorCopy(origin, pml.origin);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static void PM_DroneMove(void)
 {
     float time_left, speed, throttle;
@@ -1051,6 +1076,7 @@ static void PM_DroneMove(void)
         VectorMA(pml.origin, time_left, pml.velocity, end);
         trace = PMOVE_TRACE(pml.origin, pm->mins, pm->maxs, end);
         if (trace.allsolid) {
+            PM_DroneUnstuck();
             VectorClear(pml.velocity);
             break;
         }
